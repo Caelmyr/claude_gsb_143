@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系统日志 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .lv-toggle { display:inline-flex; align-items:center; gap:4px; margin-right:8px; cursor:pointer;
+               padding:3px 10px; border-radius:14px; border:1px solid var(--border); font-size:12px; user-select:none; }
+  .lv-toggle.on { border-color: currentColor; background: rgba(255,255,255,.04); }
+  .lv-toggle .dot { width:8px; height:8px; border-radius:50%; background: currentColor; }
+  .lv-DEBUG { color: var(--muted); } .lv-INFO { color: var(--info); }
+  .lv-WARN { color: var(--warn); } .lv-ERROR { color: var(--bad); } .lv-FATAL { color:#ff7b72; }
+  tr.log-main { cursor:pointer; }
+  tr.log-detail-row td { padding:0 !important; border-bottom:1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">系统日志</h1>
+        <div class="sub" id="page-sub">审计日志 · 多条件过滤 · 实时跟踪 · CSV 导出</div>
+      </div>
+      <div class="spacer"></div>
+      <label class="checkbox small"><input type="checkbox" id="auto-refresh" checked> 自动刷新(3s)</label>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <!-- 过滤条 -->
+      <div class="card" style="padding:12px 16px">
+        <div class="toolbar" style="margin-bottom:8px">
+          <span class="small muted">级别</span>
+          <span id="lv-toggles"></span>
+        </div>
+        <div class="toolbar" style="margin-bottom:0">
+          <label class="fl">来源
+            <select id="f-source"><option value="">全部</option></select></label>
+          <label class="fl">用户
+            <select id="f-user"><option value="">全部</option></select></label>
+          <label class="fl" style="flex:1;min-width:180px">关键字
+            <input type="text" id="f-q" placeholder="搜索 action / target / detail …"></label>
+          <label class="fl">每页
+            <select id="f-limit">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="300">300</option>
+              <option value="1000">1000</option>
+            </select></label>
+          <button class="btn primary sm" id="btn-query">查询</button>
+          <div class="spacer" style="flex:1"></div>
+          <button class="btn sm" id="btn-export">⇩ 导出 CSV</button>
+          <button class="btn sm danger" id="btn-clear">清空日志</button>
+        </div>
+      </div>
+
+      <!-- 统计条 -->
+      <div class="grid cols-5" id="lv-stats" style="margin-bottom:14px"></div>
+
+      <!-- 日志表 -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-wrap" style="max-height:66vh;overflow-y:auto">
+          <table class="tbl">
+            <thead><tr>
+              <th style="width:150px">时间</th><th style="width:64px">级别</th>
+              <th style="width:96px">来源</th><th style="width:90px">用户</th>
+              <th style="width:130px">动作</th><th>对象 / 详情</th>
+            </tr></thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border-soft)">
+          <button class="btn xs" id="pg-prev">← 上一页</button>
+          <span class="small muted" id="pg-info"></span>
+          <button class="btn xs" id="pg-next">下一页 →</button>
+          <div class="spacer" style="flex:1"></div>
+          <span class="small muted" id="total-info"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtTs, toast, confirmDlg, getToken } = DFSVS;
+
+const LEVELS = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
+let activeLevels = new Set(["INFO", "WARN", "ERROR", "FATAL"]);
+let offset = 0;
+let lastTotal = 0;
+let stopPoll = null;
+
+// ------------------------------------------------------------------ 过滤器
+function renderToggles() {
+  document.getElementById("lv-toggles").innerHTML = LEVELS.map(lv => `
+    <span class="lv-toggle lv-${lv} ${activeLevels.has(lv) ? "on" : ""}" data-lv="${lv}">
+      <span class="dot"></span>${lv}</span>`).join("");
+  document.querySelectorAll(".lv-toggle").forEach(el => el.onclick = () => {
+    const lv = el.dataset.lv;
+    if (activeLevels.has(lv)) activeLevels.delete(lv); else activeLevels.add(lv);
+    renderToggles();
+    offset = 0;
+    load();
+  });
+}
+
+async function fillFilterOptions() {
+  try {
+    // 来源与用户从现有日志中归纳
+    const d = await api("GET", "/api/logs?limit=1000");
+    const sources = [...new Set(d.items.map(i => i.source))].sort();
+    const users = [...new Set(d.items.map(i => i.user))].sort();
+    document.getElementById("f-source").innerHTML =
+      `<option value="">全部</option>` + sources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+    document.getElementById("f-user").innerHTML =
+      `<option value="">全部</option>` + users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join("");
+  } catch (e) {}
+}
+
+// ------------------------------------------------------------------ 加载
+async function load() {
+  const params = new URLSearchParams();
+  if (activeLevels.size && activeLevels.size < LEVELS.length)
+    params.set("level", [...activeLevels].join(","));
+  const src = document.getElementById("f-source").value;
+  const usr = document.getElementById("f-user").value;
+  const q = document.getElementById("f-q").value.trim();
+  const limit = +document.getElementById("f-limit").value;
+  if (src) params.set("source", src);
+  if (usr) params.set("user", usr);
+  if (q) params.set("q", q);
+  params.set("limit", limit);
+  params.set("offset", offset);
+  try {
+    const d = await api("GET", "/api/logs?" + params.toString());
+    lastTotal = d.total;
+    renderLogs(d.items, limit);
+    renderLevelStats(d);
+  } catch (e) { toast(e.message, "bad"); }
+}
+
+function renderLogs(items, limit) {
+  const body = document.getElementById("log-body");
+  if (!items.length) {
+    body.innerHTML = `<tr><td colspan="6" class="empty"><div class="big">🗎</div>没有符合条件的日志</td></tr>`;
+  } else {
+    body.innerHTML = items.map((l, i) => `
+      <tr class="log-main log-row lv-${esc(l.level)}" data-i="${i}">
+        <td class="num dim nowrap">${fmtTs(l.ts)}</td>
+        <td class="lv">${esc(l.level)}</td>
+        <td><span class="chip">${esc(l.source)}</span></td>
+        <td class="small">${esc(l.user || "-")}</td>
+        <td class="mono small">${esc(l.action)}</td>
+        <td class="small">
+          <span class="mono" style="color:var(--text-dim)">${esc(l.target || "")}</span>
+          <span class="muted" style="margin-left:8px">${esc((l.detail || "").slice(0, 90))}${(l.detail || "").length > 90 ? "…" : ""}</span>
+        </td>
+      </tr>
+      <tr class="log-detail-row" id="ld-${i}" style="display:none">
+        <td colspan="6"><div class="log-detail"><pre>${esc(l.detail || "（无详情）")}</pre></div></td>
+      </tr>`).join("");
+    body.querySelectorAll(".log-main").forEach(tr => tr.onclick = () => {
+      const d = document.getElementById("ld-" + tr.dataset.i);
+      d.style.display = d.style.display === "none" ? "" : "none";
+    });
+  }
+  const page = Math.floor(offset / limit) + 1;
+  const pages = Math.max(1, Math.ceil(lastTotal / limit));
+  document.getElementById("pg-info").textContent = `第 ${page} / ${pages} 页`;
+  document.getElementById("total-info").textContent = `共 ${lastTotal} 条（服务端保留最近 5000 条）`;
+  document.getElementById("pg-prev").disabled = offset === 0;
+  document.getElementById("pg-next").disabled = offset + limit >= lastTotal;
+}
+
+function renderLevelStats(d) {
+  // 从当前查询总量与全量样本估算级别分布
+  api("GET", "/api/logs?limit=1000").then(all => {
+    const counts = { DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0, FATAL: 0 };
+    all.items.forEach(i => counts[i.level] = (counts[i.level] || 0) + 1);
+    document.getElementById("lv-stats").innerHTML = LEVELS.map(lv => `
+      <div class="kpi ${lv === "ERROR" || lv === "FATAL" ? (counts[lv] ? "bad" : "") : lv === "WARN" ? (counts[lv] ? "warn" : "") : ""}">
+        <div class="k-label lv-${lv}" style="font-weight:700">${lv}</div>
+        <div class="k-value" style="font-size:20px">${counts[lv]}</div>
+        <div class="k-sub">最近 ${all.items.length} 条中</div>
+      </div>`).join("");
+  }).catch(() => {});
+}
+
+// ------------------------------------------------------------------ 操作
+document.getElementById("btn-query").onclick = () => { offset = 0; load(); };
+document.getElementById("f-q").onkeydown = (e) => { if (e.key === "Enter") { offset = 0; load(); } };
+document.getElementById("pg-prev").onclick = () => {
+  offset = Math.max(0, offset - (+document.getElementById("f-limit").value)); load(); };
+document.getElementById("pg-next").onclick = () => {
+  offset += +document.getElementById("f-limit").value; load(); };
+document.getElementById("btn-export").onclick = () => {
+  location.href = "/api/logs/export?token=" + encodeURIComponent(getToken());
+};
+document.getElementById("btn-clear").onclick = () =>
+  confirmDlg("清空全部系统日志？该操作不可恢复（将记录一条清空审计）。", async () => {
+    try { await api("POST", "/api/logs/clear", {}); toast("日志已清空", "ok"); load(); }
+    catch (e) { toast(e.message, "bad"); }
+  }, true);
+
+document.getElementById("auto-refresh").onchange = (e) => {
+  if (stopPoll) { stopPoll(); stopPoll = null; }
+  if (e.target.checked) startPolling();
+};
+
+function startPolling() {
+  stopPoll = DFSVS.poll(() => {
+    if (document.getElementById("auto-refresh").checked) load();
+  }, 3000);
+}
+
+initPage("logs.html", "系统日志").then(() => {
+  renderToggles();
+  fillFilterOptions();
+  load();
+  startPolling();
+});
+</script>
+</body>
+</html>

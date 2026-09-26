@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>回收站 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .exp-bar { width:110px; }
+  .item-name { font-weight:600; }
+  .orig-path { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">回收站</h1>
+        <div class="sub" id="page-sub">删除保护 · 保留期倒计时 · 恢复 / 彻底删除</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn sm danger" id="btn-empty">🗑 清空回收站</button>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <!-- 汇总 -->
+      <div class="grid cols-4" id="sum-row" style="margin-bottom:16px"></div>
+
+      <div class="card">
+        <div class="card-title">回收站条目 <span class="hint">超过保留期后由后台线程自动彻底删除（块引用释放，GC 回收数据）</span>
+          <span class="spacer"></span>
+          <button class="btn xs ghost" id="btn-refresh">⟳ 刷新</button>
+        </div>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr>
+            <th>名称</th><th>类型</th><th>原路径</th><th class="right">大小</th>
+            <th>删除者</th><th>删除时间</th><th>剩余保留期</th><th>操作</th>
+          </tr></thead>
+          <tbody id="item-body"></tbody>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">机制说明</div>
+        <div class="small dim" style="line-height:1.9">
+          · <b>删除 = 移动</b>：条目从原目录摘出，挂到隐藏的 <span class="mono">.trash</span> 子树下，数据块保持完整；<br>
+          · <b>恢复</b>：放回原路径（父目录已删除则回到根目录；同名冲突自动追加 <span class="mono">(restored-N)</span> 后缀）；<br>
+          · <b>彻底删除</b>：递归移除 inode 并释放块引用——块本体不会立即消失，
+            由 NameNode 的 GC 线程确认「无活动文件 + 无历史提交引用」后，
+            经宽限期向各 DataNode 下发删除命令；<br>
+          · <b>过期清理</b>：后台线程每分钟扫描 <span class="mono">expires_at</span>，到期条目自动彻底删除。
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, fmtTs, fmtAgo, toast, confirmDlg, fileIcon } = DFSVS;
+
+async function load() {
+  try {
+    const d = await api("GET", "/api/recycle");
+    renderSum(d.stats);
+    renderItems(d.items);
+  } catch (e) { toast(e.message, "bad"); }
+}
+
+function renderSum(s) {
+  const cells = [
+    { label: "待恢复条目", value: s.count, sub: "含目录（整体删除/恢复）", cls: s.count ? "warn" : "ok" },
+    { label: "占用逻辑空间", value: fmtBytes(s.bytes), sub: `涉及 ${s.blocks} 个块引用`, cls: "" },
+    { label: "保留期", value: s.retention_days + " 天", sub: "到期自动彻底删除", cls: "" },
+    { label: "块回收", value: "GC", sub: "宽限期 45s · 每 20s 扫描", cls: "accent" },
+  ];
+  document.getElementById("sum-row").innerHTML = cells.map(c => `
+    <div class="kpi ${c.cls}">
+      <div class="k-label">${esc(c.label)}</div>
+      <div class="k-value" style="font-size:21px">${esc(String(c.value))}</div>
+      <div class="k-sub">${esc(c.sub)}</div>
+    </div>`).join("");
+}
+
+function countdownHtml(item) {
+  const remain = (item.expires_at || 0) - Date.now() / 1000;
+  if (remain <= 0) return `<span class="countdown now">即将清理</span>
+    <div class="pbar thin bad exp-bar"><i style="width:100%"></i></div>`;
+  const total = (item.retention_days || 7) * 86400;
+  const pct = Math.max(0, Math.min(100, (1 - remain / total) * 100));
+  const cls = remain < 3600 ? "now" : remain < 86400 ? "soon" : "";
+  const barCls = remain < 3600 ? "bad" : remain < 86400 ? "warn" : "ok";
+  let txt;
+  if (remain > 86400) txt = `${(remain / 86400).toFixed(1)} 天`;
+  else if (remain > 3600) txt = `${(remain / 3600).toFixed(1)} 小时`;
+  else txt = `${Math.round(remain / 60)} 分钟`;
+  return `<span class="countdown ${cls}">${txt}</span>
+    <div class="pbar thin ${barCls} exp-bar"><i style="width:${pct}%"></i></div>`;
+}
+
+function renderItems(items) {
+  const body = document.getElementById("item-body");
+  if (!items.length) {
+    body.innerHTML = `<tr><td colspan="8" class="empty">
+      <div class="big">🗑</div>回收站是空的</td></tr>`;
+    return;
+  }
+  body.innerHTML = items.map(it => `
+    <tr>
+      <td>
+        <span class="item-name">${it.type === "dir" ? "🗀" : "🗎"} ${esc(it.name)}</span>
+        ${it.type === "dir" ? `<span class="badge dim plain">${it.files} 文件</span>` : ""}
+      </td>
+      <td>${it.type === "dir" ? '<span class="badge acc plain">目录</span>' : '<span class="badge dim plain">文件</span>'}</td>
+      <td class="orig-path">${esc(it.original_path)}</td>
+      <td class="num right">${fmtBytes(it.size)}</td>
+      <td class="small">${esc(it.deleted_by || "-")}</td>
+      <td class="small dim nowrap" title="${fmtTs(it.deleted_at)}">${fmtAgo(it.deleted_at)}</td>
+      <td>${countdownHtml(it)}</td>
+      <td class="nowrap">
+        <button class="btn xs ok it-restore" data-id="${esc(it.id)}" data-n="${esc(it.name)}">↩ 恢复</button>
+        <button class="btn xs danger it-purge" data-id="${esc(it.id)}" data-n="${esc(it.name)}">彻底删除</button>
+      </td>
+    </tr>`).join("");
+  body.querySelectorAll(".it-restore").forEach(b => b.onclick = async () => {
+    try {
+      const r = await api("POST", "/api/recycle/restore", { id: b.dataset.id });
+      toast(`已恢复到 ${r.path}`, "ok");
+      load();
+    } catch (e) { toast("恢复失败：" + e.message, "bad"); }
+  });
+  body.querySelectorAll(".it-purge").forEach(b => b.onclick = () =>
+    confirmDlg(`彻底删除「${b.dataset.n}」？数据块引用将被释放（GC 随后回收），不可恢复！`,
+      async () => {
+        try {
+          const r = await api("POST", "/api/recycle/purge", { id: b.dataset.id });
+          toast(`已彻底删除（释放 ${r.freed_blocks} 个块引用）`, "ok");
+          load();
+        } catch (e) { toast(e.message, "bad"); }
+      }, true));
+}
+
+document.getElementById("btn-empty").onclick = () =>
+  confirmDlg("清空回收站？所有条目将被彻底删除，不可恢复！", async () => {
+    try {
+      const r = await api("POST", "/api/recycle/empty", {});
+      toast(`已清空 ${r.purged} 项`, "ok");
+      load();
+    } catch (e) { toast(e.message, "bad"); }
+  }, true);
+
+document.getElementById("btn-refresh").onclick = load;
+
+initPage("recycle.html", "回收站").then(() => {
+  load();
+  DFSVS.poll(load, 15000);   // 刷新倒计时
+});
+</script>
+</body>
+</html>

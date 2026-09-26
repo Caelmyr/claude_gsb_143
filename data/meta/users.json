@@ -1,0 +1,60 @@
+{
+ "doc": "users",
+ "vv": {
+  "namenode": 20
+ },
+ "updated_at": 1790427138.618471,
+ "data": {
+  "users": {
+   "admin": {
+    "username": "admin",
+    "salt": "e8f006e3253774406ef84ee36d9aafac",
+    "pw_hash": "67cede4c7c383652e873ae18ebdc684ea6d5d194f4f2db2b275dfd16bbd31fd2",
+    "role": "admin",
+    "email": "admin@dfsvs.local",
+    "note": "系统内置管理员",
+    "status": "active",
+    "created_at": 1790384120.003358,
+    "last_login": 1790427138.6184611,
+    "login_count": 15
+   },
+   "alice": {
+    "username": "alice",
+    "salt": "b939d3426242e9f15b07b37449c0ea56",
+    "pw_hash": "26393bfb6ec73840cc3dc39136be00a1456cd80d0358267d84ece5e286e11ef5",
+    "role": "operator",
+    "email": "alice@dfsvs.local",
+    "note": "运维一组",
+    "status": "active",
+    "created_at": 1790384122.1715567,
+    "last_login": null,
+    "login_count": 0
+   },
+   "bob": {
+    "username": "bob",
+    "salt": "3912ac999302d96ddfde2d7b514931da",
+    "pw_hash": "5046d001b4dfbe031c1cb5d6f9e1e430d619a47c2f304a223b1ca883df89d1e8",
+    "role": "viewer",
+    "email": "bob@dfsvs.local",
+    "note": "只读审计",
+    "status": "active",
+    "created_at": 1790384122.2197604,
+    "last_login": null,
+    "login_count": 0
+   },
+   "carol": {
+    "username": "carol",
+    "salt": "efbd5dd6954f961c47d404468d0a6885",
+    "pw_hash": "53ca7f9cb58926123ae46e8eab84f6bae21d6f5f63ab4a12aa4cc444893c8228",
+    "role": "operator",
+    "email": "carol@dfsvs.local",
+    "note": "设计资源维护",
+    "status": "disabled",
+    "created_at": 1790384122.2692902,
+    "last_login": null,
+    "login_count": 0
+   }
+  },
+  "created_at": 1790384119.9543657
+ }
+}

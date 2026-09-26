@@ -1,0 +1,32 @@
+# 架构设计说明
+
+## 1. 元数据层
+
+NameNode 将所有元数据组织为 9 个 JSON 文档：
+fs / blocks / versions / users / perms / logs / recycle / stats / cluster。
+所有写入都经过 `atomic_write_json`：临时文件 → fsync → os.replace → 目录 fsync，
+保证任何崩溃点都不会产生半截文件。
+
+## 2. 副本一致性
+
+- 每个块携带 genstamp（单调递增版本戳）与 sha256 校验和；
+- 写入采用流水线复制：NN → DN1 → DN2 → DN3，每跳校验；
+- DataNode 周期性全量块汇报，NameNode 对账：
+  * 未知块 / genstamp 过期 / 校验和不符 → 下发删除命令；
+  * 副本缺失 → 进入 under-replicated 恢复队列。
+
+## 3. 故障恢复
+
+心跳超时（6s）→ 节点判 DEAD → 其上副本全部失效 →
+恢复调度线程为受影响块选择 (存活源副本, 目标节点)，
+通过心跳应答下发 REPLICATE 命令，目标节点 HTTP 拉取块数据。
+
+## 4. 版本树
+
+提交即"全量快照 + 块引用"。块不可变，历史版本天然可读。
+GC 保护集 = 活动 inode ∪ 全部提交快照，未被引用的块过宽限期后回收。
+
+## 5. 三方合并
+
+base = LCA(ours, theirs)。快照级合并对每个路径做状态机判定，
+文本冲突落到行级 diff3（Myers 支撑），二进制冲突保留 ours 并记录。

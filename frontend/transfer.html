@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上传下载 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">上传下载</h1>
+        <div class="sub" id="page-sub">分块传输 · 断点续传 · 校验和完整性 · 副本流水线</div>
+      </div>
+      <div class="spacer"></div>
+      <label class="checkbox small" title="服务端随机失败 + 客户端随机中断，演练重试与续传">
+        <input type="checkbox" id="chaos-toggle"> 混沌模式
+      </label>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <!-- 未完成会话提示 -->
+      <div class="card" id="resume-banner" style="display:none;border-color:var(--warn)"></div>
+
+      <div class="grid cols-2">
+        <!-- ================= 上传 ================= -->
+        <div class="card">
+          <div class="card-title">⇧ 分块上传 <span class="hint">浏览器切片 → NameNode 暂存 → 分块 → 流水线 3 副本</span></div>
+
+          <div class="dropzone" id="dropzone">
+            <div style="font-size:30px">📄</div>
+            点击选择或拖拽文件到此处<br>
+            <span class="small">上传按分片切块、逐片校验 sha256，可随时暂停 / 断网续传</span>
+            <input type="file" id="file-input" style="display:none">
+          </div>
+
+          <div id="up-form" style="display:none;margin-top:14px">
+            <div class="kv" style="margin-bottom:12px">
+              <span class="k">文件</span><span class="v" id="up-name"></span>
+              <span class="k">大小</span><span class="v" id="up-size"></span>
+            </div>
+            <div class="form-row" style="margin-bottom:12px">
+              <label class="fl" style="flex:1">目标目录
+                <input type="text" id="up-path" value="/">
+              </label>
+              <label class="fl">分片大小
+                <select id="up-piece">
+                  <option value="32768">32 KiB</option>
+                  <option value="131072">128 KiB</option>
+                  <option value="262144" selected>256 KiB</option>
+                  <option value="1048576">1 MiB</option>
+                </select>
+              </label>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+              <div class="pbar" style="flex:1"><i id="up-bar" style="width:0%"></i></div>
+              <span class="mono small" id="up-pct">0%</span>
+            </div>
+            <div class="small muted" id="up-status">就绪</div>
+            <div class="piece-grid" id="up-pieces"></div>
+
+            <div class="btn-group" style="margin-top:14px">
+              <button class="btn primary" id="up-start">开始上传</button>
+              <button class="btn" id="up-pause" disabled>暂停</button>
+              <button class="btn ghost" id="up-reset">清空</button>
+            </div>
+
+            <div id="up-result" style="display:none;margin-top:14px"></div>
+          </div>
+        </div>
+
+        <!-- ================= 下载 ================= -->
+        <div class="card">
+          <div class="card-title">⇩ 分段下载 <span class="hint">HTTP Range 分段拉取 · 副本轮询与故障转移</span></div>
+
+          <div class="form-row" style="margin-bottom:12px">
+            <label class="fl" style="flex:1">文件路径
+              <input type="text" id="dl-path" placeholder="/data/sales.csv" value="">
+            </label>
+            <label class="fl">分段大小
+              <select id="dl-seg">
+                <option value="65536">64 KiB</option>
+                <option value="131072" selected>128 KiB</option>
+                <option value="524288">512 KiB</option>
+                <option value="1048576">1 MiB</option>
+              </select>
+            </label>
+            <button class="btn" id="dl-pick">浏览…</button>
+          </div>
+
+          <div id="dl-info" class="small muted" style="margin-bottom:10px">输入路径后点「查询」</div>
+          <div class="btn-group" style="margin-bottom:12px">
+            <button class="btn" id="dl-query">查询</button>
+            <button class="btn primary" id="dl-start" disabled>开始下载</button>
+            <button class="btn" id="dl-pause" disabled>暂停</button>
+            <button class="btn ok" id="dl-save" disabled>保存到本地</button>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+            <div class="pbar" style="flex:1"><i id="dl-bar" style="width:0%"></i></div>
+            <span class="mono small" id="dl-pct">0%</span>
+          </div>
+          <div class="small muted" id="dl-status">就绪</div>
+
+          <div id="dl-nodes" class="small" style="margin-top:10px"></div>
+          <div id="dl-result" style="display:none;margin-top:12px"></div>
+        </div>
+      </div>
+
+      <!-- 会话列表 -->
+      <div class="card">
+        <div class="card-title">进行中的上传会话 <span class="hint">（服务端暂存分片，刷新页面后可续传）</span>
+          <span class="spacer"></span>
+          <button class="btn xs ghost" id="sess-refresh">⟳</button>
+        </div>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr><th>会话</th><th>目标</th><th>进度</th><th>分片</th><th>大小</th><th>剩余时效</th><th></th></tr></thead>
+          <tbody id="sess-body"></tbody>
+        </table></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, fmtDur, toast, modal, sha256Hex, getToken } = DFSVS;
+
+const CHAOS = () => document.getElementById("chaos-toggle").checked;
+
+// 混沌模式开关同步到服务端（上传随机失败）
+document.getElementById("chaos-toggle").onchange = async (e) => {
+  try {
+    await api("POST", "/api/sim/chaos", { enabled: e.target.checked });
+    toast(e.target.checked ? "混沌模式开启：上传分片将随机失败" : "混沌模式关闭",
+          e.target.checked ? "warn" : "ok");
+  } catch (err) { toast("设置失败（需要 admin）：" + err.message, "bad"); e.target.checked = !e.target.checked; }
+};
+
+// ------------------------------------------------------------------ 上传
+let upFile = null;
+let upState = null;   // {session,total,piece,received:Set,paused,running,aborted}
+
+const LS_UPLOAD = "dfsvs_upload_sessions";
+function lsGet() { try { return JSON.parse(localStorage.getItem(LS_UPLOAD) || "{}"); } catch (e) { return {}; } }
+function lsSet(o) { try { localStorage.setItem(LS_UPLOAD, JSON.stringify(o)); } catch (e) {} }
+function lsKey(f) { return `${f.name}:${f.size}`; }
+
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("file-input");
+dropzone.onclick = () => fileInput.click();
+dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add("drag"); };
+dropzone.ondragleave = () => dropzone.classList.remove("drag");
+dropzone.ondrop = (e) => {
+  e.preventDefault(); dropzone.classList.remove("drag");
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+};
+fileInput.onchange = () => { if (fileInput.files.length) setFile(fileInput.files[0]); };
+
+function setFile(f) {
+  upFile = f;
+  document.getElementById("up-form").style.display = "";
+  document.getElementById("up-name").textContent = f.name;
+  document.getElementById("up-size").textContent = `${fmtBytes(f.size)}（${f.size} B）`;
+  const path = document.getElementById("up-path");
+  if (!path.value || path.value === "/") path.value = guessDir(f.name);
+  document.getElementById("up-result").style.display = "none";
+  renderPieces(0, 0);
+  setUpStatus("就绪");
+  checkResume(f);
+}
+
+function guessDir(name) {
+  const ext = name.split(".").pop().toLowerCase();
+  if (["png","jpg","jpeg","gif","svg","webp"].includes(ext)) return "/images";
+  if (["csv","json","bin","dat","parquet"].includes(ext)) return "/data";
+  if (["py","js","css","html","sh"].includes(ext)) return "/code";
+  if (["md","txt","log","pdf","doc"].includes(ext)) return "/docs";
+  return "/";
+}
+
+function renderPieces(total, receivedSet) {
+  const box = document.getElementById("up-pieces");
+  if (!total) { box.innerHTML = ""; return; }
+  const shown = Math.min(total, 220);
+  let html = "";
+  for (let i = 0; i < shown; i++) {
+    const cls = receivedSet && receivedSet.has(i) ? "done" : "";
+    html += `<span class="piece ${cls}" id="pc-${i}" title="分片 ${i}">${i}</span>`;
+  }
+  if (total > shown) html += `<span class="piece" title="…">+${total - shown}</span>`;
+  box.innerHTML = html;
+}
+
+function markPiece(i, cls) {
+  const el = document.getElementById("pc-" + i);
+  if (el) el.className = "piece " + cls;
+}
+
+function setUpStatus(t) { document.getElementById("up-status").textContent = t; }
+function setUpPct(p) {
+  document.getElementById("up-bar").style.width = p + "%";
+  document.getElementById("up-pct").textContent = p.toFixed(1) + "%";
+}
+
+async function checkResume(f) {
+  const saved = lsGet()[lsKey(f)];
+  if (!saved || !saved.session) return;
+  const banner = document.getElementById("resume-banner");
+  banner.style.display = "";
+  banner.innerHTML = `⚠ 检测到未完成的上传会话：<b class="mono">${esc(saved.session)}</b>
+    （${esc(f.name)}，已收 ${saved.received?.length || 0}/${saved.total || "?"} 片）
+    <button class="btn sm warn" id="resume-now" style="margin-left:10px">断点续传</button>
+    <button class="btn sm ghost" id="resume-drop">放弃</button>`;
+  document.getElementById("resume-now").onclick = () => { banner.style.display = "none"; startUpload(saved.session); };
+  document.getElementById("resume-drop").onclick = () => {
+    const all = lsGet(); delete all[lsKey(f)]; lsSet(all);
+    banner.style.display = "none";
+  };
+}
+
+document.getElementById("up-start").onclick = () => startUpload(null);
+document.getElementById("up-pause").onclick = () => {
+  if (upState) { upState.paused = !upState.paused;
+    document.getElementById("up-pause").textContent = upState.paused ? "继续" : "暂停";
+    setUpStatus(upState.paused ? "已暂停（分片保留在服务端，可续传）" : "继续上传…"); }
+};
+document.getElementById("up-reset").onclick = () => {
+  if (upState) upState.aborted = true;
+  upFile = null; upState = null;
+  document.getElementById("up-form").style.display = "none";
+  fileInput.value = "";
+};
+
+async function startUpload(existingSession) {
+  if (!upFile) return toast("请先选择文件", "warn");
+  const piece = +document.getElementById("up-piece").value;
+  const path = document.getElementById("up-path").value.trim() || "/";
+  document.getElementById("up-start").disabled = true;
+  document.getElementById("up-pause").disabled = false;
+  document.getElementById("up-pause").textContent = "暂停";
+
+  try {
+    const begin = await api("POST", "/api/upload/begin", {
+      path, filename: upFile.name, size: upFile.size,
+      piece_size: piece, session: existingSession || undefined,
+    });
+    upState = {
+      session: begin.session, total: begin.total_pieces, piece: begin.piece_size,
+      received: new Set(begin.received || []), paused: false, running: true, aborted: false,
+    };
+    // 持久化会话（刷新页面后可续传）
+    const all = lsGet();
+    all[lsKey(upFile)] = { session: begin.session, total: begin.total_pieces,
+                           piece: begin.piece_size, path };
+    lsSet(all);
+
+    renderPieces(upState.total, upState.received);
+    const t0 = performance.now();
+    let retries = 0;
+
+    for (let i = 0; i < upState.total; i++) {
+      if (upState.aborted) return finishUpload("已取消", false);
+      while (upState.paused) await sleep(250);
+      if (upState.received.has(i)) continue;
+
+      const start = i * upState.piece;
+      const blob = upFile.slice(start, Math.min(start + upState.piece, upFile.size));
+      markPiece(i, "sending");
+      let ok = false;
+      for (let attempt = 0; attempt < 8 && !ok; attempt++) {
+        if (upState.aborted) return finishUpload("已取消", false);
+        while (upState.paused) await sleep(250);
+        try {
+          const buf = await blob.arrayBuffer();
+          // 混沌模式：客户端随机中断本次请求（模拟断网）
+          if (CHAOS() && Math.random() < 0.25) throw new Error("模拟客户端断网");
+          const b64 = bufToB64(buf);
+          const ck = await sha256Hex(buf);
+          const r = await api("POST", "/api/upload/chunk", {
+            session: upState.session, index: i, data: b64, checksum: ck,
+          });
+          ok = r.ok;
+          upState.received.add(i);
+          markPiece(i, "done");
+          retries = 0;
+        } catch (e) {
+          retries++;
+          markPiece(i, "failed");
+          setUpStatus(`分片 ${i} 失败（${e.message}），${0.3 * (attempt + 1)}s 后重试 …`);
+          await sleep(300 * (attempt + 1));
+          markPiece(i, "sending");
+        }
+      }
+      if (!ok) return finishUpload(`分片 ${i} 重试次数用尽`, false);
+      const doneCount = upState.received.size;
+      setUpPct(doneCount / upState.total * 100);
+      const speed = (doneCount * upState.piece) / ((performance.now() - t0) / 1000);
+      setUpStatus(`上传中 ${doneCount}/${upState.total} 片 · ${fmtBytes(speed)}/s${retries ? ` · 累计重试 ${retries}` : ""}`);
+    }
+
+    setUpStatus("所有分片就绪，服务端合并 → 分块 → 流水线复制 3 副本 …");
+    const r = await api("POST", "/api/upload/complete", { session: upState.session });
+    const all2 = lsGet(); delete all2[lsKey(upFile)]; lsSet(all2);
+    finishUpload("完成", true, r);
+  } catch (e) {
+    finishUpload("失败：" + e.message, false);
+  }
+}
+
+function finishUpload(msg, ok, result) {
+  document.getElementById("up-start").disabled = false;
+  document.getElementById("up-pause").disabled = true;
+  if (upState) upState.running = false;
+  setUpStatus(msg);
+  if (ok && result) {
+    setUpPct(100);
+    const f = result.file;
+    document.getElementById("up-result").style.display = "";
+    document.getElementById("up-result").innerHTML = `
+      <div class="trace-box">
+        <div class="step">✅ 上传完成：<b>${esc(f.path)}</b></div>
+        <div class="step">分片 ${result.pieces} 个 → 系统块 ${result.blocks} 个（64KiB 定长分块）· 去重命中 ${result.dedup_hits}</div>
+        <div class="step">耗时 ${result.elapsed_s}s · 端到端吞吐 ${result.throughput_mbps} MB/s</div>
+        <div class="step">内容哈希 <span class="mono">${esc(f.content_hash.slice(0, 32))}…</span></div>
+        <div class="step"><a href="files.html?path=${encodeURIComponent(f.path.split("/").slice(0, -1).join("/") || "/")}">在文件浏览中查看 →</a></div>
+      </div>`;
+    toast(`上传完成：${f.path}`, "ok");
+    loadSessions();
+  } else if (!ok) {
+    toast(msg, "bad", 5000);
+  }
+}
+
+function bufToB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH)
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(bin);
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ------------------------------------------------------------------ 下载
+let dlInfo = null;
+let dlState = null;   // {paused, aborted, chunks:[], offset}
+
+document.getElementById("dl-query").onclick = async () => {
+  const path = document.getElementById("dl-path").value.trim();
+  if (!path) return toast("请输入文件路径", "warn");
+  try {
+    dlInfo = await api("GET", "/api/download/info?path=" + encodeURIComponent(path));
+    document.getElementById("dl-info").innerHTML = `
+      <b>${esc(dlInfo.name)}</b> · ${fmtBytes(dlInfo.size)} · ${esc(dlInfo.mime)} ·
+      ${dlInfo.blocks.length} 块 · sha256 <span class="mono">${esc(dlInfo.content_hash.slice(0, 20))}…</span>
+      <div class="small" style="margin-top:4px">副本分布：${dlInfo.blocks.map(b =>
+        `<span class="chip" title="${esc(b.id)}">${esc(b.checksum.slice(0, 6))}→[${esc(b.replicas.join(","))}]</span>`).join(" ")}</div>`;
+    document.getElementById("dl-start").disabled = dlInfo.size === 0;
+    document.getElementById("dl-result").style.display = "none";
+  } catch (e) {
+    dlInfo = null;
+    document.getElementById("dl-info").textContent = "查询失败：" + e.message;
+    document.getElementById("dl-start").disabled = true;
+  }
+};
+
+document.getElementById("dl-pick").onclick = async () => {
+  const tree = await api("GET", "/api/fs/tree");
+  const files = [];
+  (function walk(n, p) {
+    const cp = p === "/" ? "" : p;
+    if (n.type === "file") files.push({ path: cp + "/" + n.name, size: n.size });
+    (n.children || []).forEach(c => walk(c, cp + "/" + n.name));
+  })(tree.tree, "/");
+  const body = document.createElement("div");
+  body.innerHTML = `<div class="scroll-y" style="max-height:56vh">${files.map((f, i) => `
+    <div class="t-node" data-i="${i}" style="padding:6px 8px">
+      <span>🗎</span><span class="mono small">${esc(f.path)}</span>
+      <span class="ts muted small">${fmtBytes(f.size)}</span>
+    </div>`).join("") || '<div class="empty">没有文件</div>'}</div>`;
+  const m = modal({
+    title: "选择要下载的文件", body, hideCancel: true, okText: "关闭", wide: true,
+  });
+  body.querySelectorAll(".t-node").forEach(el => el.onclick = () => {
+    document.getElementById("dl-path").value = files[+el.dataset.i].path;
+    m.close();
+    document.getElementById("dl-query").click();
+  });
+};
+
+document.getElementById("dl-start").onclick = () => startDownload();
+document.getElementById("dl-pause").onclick = () => {
+  if (!dlState) return;
+  dlState.paused = !dlState.paused;
+  document.getElementById("dl-pause").textContent = dlState.paused ? "继续" : "暂停";
+  setDlStatus(dlState.paused ? "已暂停（记住偏移量，可断点续传）" : "继续下载…");
+};
+
+function setDlStatus(t) { document.getElementById("dl-status").textContent = t; }
+function setDlPct(p) {
+  document.getElementById("dl-bar").style.width = p + "%";
+  document.getElementById("dl-pct").textContent = p.toFixed(1) + "%";
+}
+
+async function startDownload() {
+  if (!dlInfo) return;
+  const seg = +document.getElementById("dl-seg").value;
+  const path = dlInfo.path || document.getElementById("dl-path").value.trim();
+  const from = dlState && dlState.partial && dlState.path === path ? dlState.offset : 0;
+  const parts = dlState && dlState.partial && dlState.path === path ? dlState.chunks : [];
+  dlState = { paused: false, aborted: false, chunks: parts, offset: from,
+              path, nodeHits: dlState?.nodeHits || {}, segs: 0, retries: 0, partial: true };
+  document.getElementById("dl-start").disabled = true;
+  document.getElementById("dl-pause").disabled = false;
+  document.getElementById("dl-save").disabled = true;
+  document.getElementById("dl-pause").textContent = "暂停";
+  if (from > 0) setDlStatus(`断点续传：从 ${fmtBytes(from)} 处继续`);
+
+  const t0 = performance.now();
+  let off = from;
+  while (off < dlInfo.size) {
+    if (dlState.aborted) break;
+    while (dlState.paused) await sleep(250);
+    const len = Math.min(seg, dlInfo.size - off);
+    const ctrl = new AbortController();
+    let chaosTimer = null;
+    try {
+      if (CHAOS() && Math.random() < 0.22) {
+        chaosTimer = setTimeout(() => ctrl.abort(), 40 + Math.random() * 200);
+      }
+      const resp = await fetch(
+        `/api/download?path=${encodeURIComponent(path)}&offset=${off}&length=${len}`,
+        { headers: { Authorization: "Bearer " + getToken() }, signal: ctrl.signal });
+      if (chaosTimer) clearTimeout(chaosTimer);
+      if (!resp.ok && resp.status !== 206) throw new Error("HTTP " + resp.status);
+      const buf = await resp.arrayBuffer();
+      const served = (resp.headers.get("X-Served-By") || "").split(",").filter(Boolean);
+      served.forEach(n => dlState.nodeHits[n] = (dlState.nodeHits[n] || 0) + 1);
+      parts.push(buf);
+      off += buf.byteLength;
+      dlState.offset = off;
+      dlState.segs++;
+      setDlPct(off / dlInfo.size * 100);
+      const speed = off / ((performance.now() - t0) / 1000);
+      setDlStatus(`下载中 ${fmtBytes(off)} / ${fmtBytes(dlInfo.size)} · ${fmtBytes(speed)}/s · 段 ${dlState.segs}`);
+      renderNodeHits();
+    } catch (e) {
+      if (chaosTimer) clearTimeout(chaosTimer);
+      dlState.retries++;
+      setDlStatus(`段 @${fmtBytes(off)} 失败（${e.message === "The user aborted a request." ? "混沌中断" : e.message}），重试 …`);
+      await sleep(400);
+    }
+  }
+  document.getElementById("dl-start").disabled = false;
+  document.getElementById("dl-pause").disabled = true;
+  if (dlState.aborted) { setDlStatus("已取消"); return; }
+  if (off < dlInfo.size) { setDlStatus("暂停中（可继续）"); return; }
+
+  // 完整性校验
+  setDlStatus("下载完成，正在校验 sha256 …");
+  const merged = new Uint8Array(parts.reduce((s, b) => s + b.byteLength, 0));
+  let pos = 0;
+  for (const b of parts) { merged.set(new Uint8Array(b), pos); pos += b.byteLength; }
+  const hash = await sha256Hex(merged.buffer);
+  const okHash = hash === dlInfo.content_hash;
+  dlState.buffer = merged;
+  dlState.partial = false;
+  document.getElementById("dl-save").disabled = false;
+  const box = document.getElementById("dl-result");
+  box.style.display = "";
+  box.innerHTML = `
+    <div class="trace-box">
+      <div class="step">${okHash ? "✅" : "❌"} 完整性校验：本地 sha256 ${okHash ? "与服务端一致" : "不一致！"}</div>
+      <div class="step mono small">${esc(hash.slice(0, 48))}…</div>
+      <div class="step">${dlState.segs} 个分段 · 重试 ${dlState.retries} 次 · 副本命中：${
+        Object.entries(dlState.nodeHits).map(([n, c]) => `${n}×${c}`).join(" ")}</div>
+    </div>`;
+  setDlStatus(okHash ? "下载完成 ✓（校验通过）" : "下载完成但校验失败");
+  toast(okHash ? "下载完成，校验通过" : "校验失败！", okHash ? "ok" : "bad");
+}
+
+function renderNodeHits() {
+  const box = document.getElementById("dl-nodes");
+  const hits = dlState?.nodeHits || {};
+  const total = Object.values(hits).reduce((a, b) => a + b, 0) || 1;
+  box.innerHTML = Object.entries(hits).map(([n, c]) => `
+    <span class="badge acc plain" style="margin-right:6px">${esc(n)} ${(c / total * 100).toFixed(0)}%</span>`).join("");
+}
+
+document.getElementById("dl-save").onclick = () => {
+  if (!dlState || !dlState.buffer) return;
+  const blob = new Blob([dlState.buffer], { type: dlInfo.mime || "application/octet-stream" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = dlInfo.name || "download.bin";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+
+// ------------------------------------------------------------------ 会话
+async function loadSessions() {
+  try {
+    const d = await api("GET", "/api/upload/sessions");
+    const body = document.getElementById("sess-body");
+    if (!d.sessions.length) {
+      body.innerHTML = `<tr><td colspan="7" class="empty small">暂无进行中的会话</td></tr>`;
+      return;
+    }
+    body.innerHTML = d.sessions.map(s => `
+      <tr>
+        <td class="mono small">${esc(s.session)}</td>
+        <td class="mono small">${esc(s.path)}/${esc(s.filename)}</td>
+        <td style="min-width:120px">
+          <div class="pbar thin"><i style="width:${s.total_pieces ? (s.received_count / s.total_pieces * 100) : 0}%"></i></div>
+        </td>
+        <td class="num">${s.received_count}/${s.total_pieces}</td>
+        <td class="num">${fmtBytes(s.size)}</td>
+        <td class="num">${fmtDur(s.expires_in)}</td>
+        <td>${s.completed ? '<span class="badge ok plain">已完成</span>' : '<span class="badge warn plain">进行中</span>'}</td>
+      </tr>`).join("");
+  } catch (e) { /* 忽略 */ }
+}
+document.getElementById("sess-refresh").onclick = loadSessions;
+
+initPage("transfer.html", "上传下载").then(() => {
+  const p = DFSVS.qs("path");
+  if (p) { document.getElementById("dl-path").value = p; document.getElementById("dl-query").click(); }
+  loadSessions();
+  DFSVS.poll(loadSessions, 5000);
+});
+</script>
+</body>
+</html>

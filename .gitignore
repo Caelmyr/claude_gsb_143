@@ -1,0 +1,22 @@
+# 依赖、构建产物与本机文件不入库（初始环境快照只放源码与配置）
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+dist/
+build/
+target/
+out/
+coverage/
+.coverage
+.next/
+.nuxt/
+.cache/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db

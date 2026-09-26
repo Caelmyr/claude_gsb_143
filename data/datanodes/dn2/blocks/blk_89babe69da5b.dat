@@ -1,0 +1,17 @@
+/* ui.css — feature-ui 分支新增：暗色主题变量 */
+:root {
+  --bg: #0e1117;
+  --panel: #161b26;
+  --border: #232a3a;
+  --text: #dbe2f1;
+  --muted: #8b93a7;
+  --accent: #4f8cff;
+  --ok: #2fbf71;
+  --warn: #f0a538;
+  --bad: #e5534b;
+}
+
+.panel { background: var(--panel); border: 1px solid var(--border); }
+.badge-ok  { color: var(--ok); }
+.badge-warn{ color: var(--warn); }
+.badge-bad { color: var(--bad); }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+  <rect width="320" height="180" rx="12" fill="#0e1117"/>
+  <g stroke="#232a3a"><line x1="40" y1="20" x2="40" y2="150"/><line x1="40" y1="150" x2="300" y2="150"/></g>
+  <g fill="#4f8cff">
+    <rect x="60" y="90" width="24" height="60"/><rect x="100" y="60" width="24" height="90"/>
+    <rect x="140" y="100" width="24" height="50"/><rect x="180" y="40" width="24" height="110"/>
+    <rect x="220" y="75" width="24" height="75"/><rect x="260" y="55" width="24" height="95"/>
+  </g>
+  <polyline points="72,85 112,55 152,95 192,35 232,70 272,50" fill="none" stroke="#2fbf71" stroke-width="2.5"/>
+  <text x="170" y="172" fill="#8b93a7" font-family="monospace" font-size="11" text-anchor="middle">weekly throughput (GiB)</text>
+</svg>

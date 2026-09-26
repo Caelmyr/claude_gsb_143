@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>存储统计 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">存储统计</h1>
+        <div class="sub" id="page-sub">容量水位 · 吞吐时间线 · 访问热度 · 块分布 · 元数据文档</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <!-- KPI -->
+      <div class="grid cols-5" id="kpi-row" style="margin-bottom:16px"></div>
+
+      <div class="grid cols-2">
+        <!-- 容量 -->
+        <div class="card">
+          <div class="card-title">容量构成 <span class="hint">逻辑数据 × 副本因子 = 物理占用</span></div>
+          <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+            <div id="cap-donut"></div>
+            <div style="flex:1;min-width:220px" id="cap-detail"></div>
+          </div>
+        </div>
+
+        <!-- 副本分布 -->
+        <div class="card">
+          <div class="card-title">副本数分布 <span class="hint">每个块当前存活副本个数</span></div>
+          <div id="rep-dist"></div>
+          <hr class="hr">
+          <div class="card-title" style="font-size:13px">块大小分布</div>
+          <div id="size-hist"></div>
+        </div>
+
+        <!-- 吞吐 -->
+        <div class="card">
+          <div class="card-title">24 小时吞吐 <span class="hint">上传/下载流量（按小时聚合）</span></div>
+          <div id="thru-chart"></div>
+          <div id="thru-legend"></div>
+        </div>
+
+        <!-- 容量历史 -->
+        <div class="card">
+          <div class="card-title">物理占用趋势 <span class="hint">NameNode 每 15s 采样</span></div>
+          <div id="cap-hist"></div>
+        </div>
+
+        <!-- 文件类型 -->
+        <div class="card">
+          <div class="card-title">文件类型分布 <span class="hint">按扩展名聚合逻辑大小</span></div>
+          <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+            <div id="ext-donut"></div>
+            <div style="flex:1;min-width:200px" id="ext-table"></div>
+          </div>
+        </div>
+
+        <!-- 热度 -->
+        <div class="card">
+          <div class="card-title">访问热度 TOP 10 <span class="hint">指数衰减评分（半衰期 1h）· sparkline 为近期访问分布</span></div>
+          <div class="table-wrap"><table class="tbl">
+            <thead><tr><th>#</th><th>文件</th><th class="right">热度</th><th class="right">次数</th>
+              <th class="right">流量</th><th>近期分布</th><th>操作构成</th><th>最近</th></tr></thead>
+            <tbody id="hot-body"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- 元数据文档 -->
+      <div class="card">
+        <div class="card-title">集中元数据（JSON 文档）<span class="hint">原子写 · 版本向量 · NameNode 单点权威，cluster 文档向 DataNode 同步</span></div>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr><th>文档</th><th class="right">磁盘大小</th><th>版本向量 vv</th><th class="right">累计原子写</th><th class="right">同步冲突</th><th>最近更新</th></tr></thead>
+          <tbody id="meta-body"></tbody>
+        </table></div>
+        <div class="small muted" id="meta-summary" style="margin-top:8px"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, fmtTs, fmtAgo, toast, svgDonut, svgBars, svgLine,
+        sparkline, legend, PALETTE } = DFSVS;
+
+async function loadAll() {
+  const [ov, tl, hot] = await Promise.all([
+    api("GET", "/api/stats/overview"),
+    api("GET", "/api/stats/timeline?hours=24"),
+    api("GET", "/api/stats/hotness?limit=10"),
+  ]);
+  renderKpis(ov);
+  renderCapacity(ov);
+  renderReplicaDist(ov);
+  renderThroughput(tl);
+  renderCapHist(tl);
+  renderExt(ov);
+  renderHot(hot);
+  renderMeta(ov);
+}
+
+function renderKpis(ov) {
+  const cells = [
+    { label: "逻辑数据量", value: fmtBytes(ov.logical_bytes), sub: `${ov.files} 个文件 / ${ov.dirs} 个目录`, cls: "accent" },
+    { label: "物理占用", value: fmtBytes(ov.physical_bytes), sub: `副本放大 ×${ov.replication_overhead}`, cls: "" },
+    { label: "数据块", value: ov.blocks, sub: `块大小 ${fmtBytes(64 * 1024)}（定长）`, cls: "" },
+    { label: "集群容量", value: fmtBytes(ov.capacity), sub: `${ov.nodes_live}/${ov.nodes_total} 节点在线`, cls: ov.nodes_dead ? "warn" : "ok" },
+    { label: "回收站", value: fmtBytes(ov.trash.bytes), sub: `${ov.trash.count} 项 · 保留 ${ov.trash.retention_days} 天`, cls: "" },
+  ];
+  document.getElementById("kpi-row").innerHTML = cells.map(c => `
+    <div class="kpi ${c.cls}">
+      <div class="k-label">${esc(c.label)}</div>
+      <div class="k-value">${esc(c.value)}</div>
+      <div class="k-sub">${esc(c.sub)}</div>
+    </div>`).join("");
+}
+
+function renderCapacity(ov) {
+  document.getElementById("cap-donut").innerHTML = svgDonut([
+    { label: "已用", value: ov.used, valueText: fmtBytes(ov.used) },
+    { label: "空闲", value: Math.max(0, ov.capacity - ov.used), valueText: fmtBytes(ov.free) },
+  ], 170, 26, (ov.used / Math.max(1, ov.capacity) * 100).toFixed(1) + "%", "集群水位");
+  document.getElementById("cap-detail").innerHTML = `
+    <div class="kv">
+      <span class="k">总容量</span><span class="v">${fmtBytes(ov.capacity)}</span>
+      <span class="k">已用（物理）</span><span class="v">${fmtBytes(ov.used)}</span>
+      <span class="k">逻辑数据</span><span class="v">${fmtBytes(ov.logical_bytes)}</span>
+      <span class="k">副本/开销放大</span><span class="v">×${ov.replication_overhead}</span>
+      <span class="k">块缓存</span><span class="v">${ov.cache.entries} 条 / ${fmtBytes(ov.cache.bytes)} · 命中 ${ov.cache.hits}:${ov.cache.misses}</span>
+      <span class="k">API 速率</span><span class="v">${ov.api_rate} req/s</span>
+    </div>` +
+    legend([
+      { label: "已用", valueText: fmtBytes(ov.used), color: PALETTE[0] },
+      { label: "空闲", valueText: fmtBytes(ov.free), color: "#1c2436" },
+    ]);
+}
+
+function renderReplicaDist(ov) {
+  const dist = ov.replica_dist || {};
+  const keys = ["0", "1", "2", "3", "4"];
+  const colors = { "0": "#e5534b", "1": "#f0a538", "2": "#f0d438", "3": "#2fbf71", "4": "#4f8cff" };
+  const box = document.getElementById("rep-dist");
+  box.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-end;height:130px;padding:0 6px">
+    ${keys.map(k => {
+      const v = dist[k] || 0;
+      const max = Math.max(1, ...Object.values(dist));
+      const h = v / max * 100;
+      return `<div style="flex:1;text-align:center">
+        <div class="mono small" style="margin-bottom:4px">${v}</div>
+        <div style="height:${Math.max(h, v ? 3 : 0)}%;background:${colors[k]};border-radius:5px 5px 0 0;min-height:${v ? 4 : 0}px"></div>
+        <div class="small muted" style="margin-top:5px">${k}× 副本</div>
+      </div>`;
+    }).join("")}
+  </div>`;
+
+  const hist = ov.block_size_hist || {};
+  const order = ["0", "<4K", "4K-16K", "16K-64K", "=64K", ">64K"];
+  document.getElementById("size-hist").innerHTML =
+    svgBars(order.filter(k => hist[k]).map(k => ({ label: k, value: hist[k] })),
+            { height: 130, valueFmt: v => Math.round(v) });
+}
+
+function renderThroughput(tl) {
+  const hourly = tl.hourly;
+  const labels = hourly.map(h => h.hour.slice(-2) + "时");
+  document.getElementById("thru-chart").innerHTML = svgBars(
+    hourly.map((h, i) => ({ label: labels[i], value: 0 })),
+    {
+      height: 180,
+      valueFmt: v => fmtBytes(v),
+      series: [
+        { name: "下载流量", color: "#4f8cff", values: hourly.map(h => h.bytes_out) },
+        { name: "上传流量", color: "#2fbf71", values: hourly.map(h => h.bytes_in) },
+      ],
+    });
+  document.getElementById("thru-legend").innerHTML = legend([
+    { label: "下载（bytes_out）", color: "#4f8cff" },
+    { label: "上传（bytes_in）", color: "#2fbf71" },
+  ]);
+}
+
+function renderCapHist(tl) {
+  const hist = tl.capacity_history || [];
+  if (hist.length < 2) {
+    document.getElementById("cap-hist").innerHTML = `<div class="empty small">采样点积累中（每 15s 一个点）…</div>`;
+    return;
+  }
+  document.getElementById("cap-hist").innerHTML = svgLine(
+    hist.map(h => ({ label: fmtTs(h.ts).slice(11, 16), value: h.used })),
+    { height: 190, valueFmt: v => fmtBytes(v), color: "#9b6cff" });
+}
+
+function renderExt(ov) {
+  const entries = Object.entries(ov.ext_bytes || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const total = entries.reduce((s, e) => s + e[1], 0) || 1;
+  document.getElementById("ext-donut").innerHTML = svgDonut(
+    entries.map(([k, v], i) => ({ label: k, value: v, valueText: fmtBytes(v), color: PALETTE[i % PALETTE.length] })),
+    160, 24, fmtBytes(total), "按类型");
+  document.getElementById("ext-table").innerHTML = `
+    <table class="tbl"><thead><tr><th>扩展名</th><th class="right">文件数</th><th class="right">逻辑大小</th><th>占比</th></tr></thead>
+    <tbody>${entries.map(([k, v], i) => `
+      <tr>
+        <td><span class="li"><span class="sw" style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${PALETTE[i % PALETTE.length]};margin-right:6px"></span><span class="mono">${esc(k)}</span></span></td>
+        <td class="num right">${ov.ext_count[k]}</td>
+        <td class="num right">${fmtBytes(v)}</td>
+        <td style="min-width:90px"><div class="pbar thin"><i style="width:${(v / total * 100).toFixed(1)}%;background:${PALETTE[i % PALETTE.length]}"></i></div></td>
+      </tr>`).join("")}</tbody></table>`;
+}
+
+function renderHot(d) {
+  const body = document.getElementById("hot-body");
+  if (!d.items.length) { body.innerHTML = `<tr><td colspan="8" class="empty small">暂无访问数据</td></tr>`; return; }
+  body.innerHTML = d.items.map((h, i) => `
+    <tr>
+      <td class="num muted">${i + 1}</td>
+      <td class="mono small"><a href="files.html?path=${esc(h.path.split("/").slice(0, -1).join("/") || "/")}">${esc(h.path)}</a></td>
+      <td class="num right"><b style="color:var(--accent)">${h.score}</b></td>
+      <td class="num right">${h.count}</td>
+      <td class="num right">${fmtBytes(h.bytes)}</td>
+      <td>${sparkline(h.buckets, { w: 110, h: 20 })}</td>
+      <td class="small">${Object.entries(h.ops).map(([k, v]) => `<span class="chip">${esc(k)}×${v}</span>`).join(" ")}</td>
+      <td class="small dim nowrap">${fmtAgo(h.last)}</td>
+    </tr>`).join("");
+}
+
+function renderMeta(ov) {
+  const docs = ov.meta || {};
+  document.getElementById("meta-body").innerHTML = Object.entries(docs).map(([name, d]) => `
+    <tr>
+      <td class="mono"><b>${esc(name)}.json</b></td>
+      <td class="num right">${fmtBytes(d.bytes)}</td>
+      <td class="mono small">${esc(JSON.stringify(d.vv))}</td>
+      <td class="num right">—</td>
+      <td class="num right">—</td>
+      <td class="small dim">—</td>
+    </tr>`).join("");
+  const ms = ov.meta_stats || {};
+  document.getElementById("meta-summary").textContent =
+    `累计原子写 ${ms.atomic_writes || 0} 次 · 文档同步应用 ${ms.syncs_applied || 0} / 跳过 ${ms.syncs_skipped || 0} · 版本向量冲突 ${ms.conflicts || 0} 次（冲突按权威节点策略解决并留痕）`;
+  // 补充每文档写次数（overview.meta 未含 writes，这里用 summary 展示总量）
+}
+
+initPage("stats.html", "存储统计").then(() => {
+  loadAll().catch(e => toast("加载失败：" + e.message, "bad"));
+  DFSVS.poll(() => loadAll().catch(() => {}), 10000);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>权限设置 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .perm-bit { display:inline-flex; align-items:center; gap:4px; margin-right:10px; font-size:12.5px; }
+  .rule-path { font-family:var(--mono); font-size:12.5px; color:var(--accent); }
+  .tester-out .step { font-family:var(--mono); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">权限设置</h1>
+        <div class="sub" id="page-sub">路径前缀 ACL · 优先级裁决 · 判定轨迹测试器</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn sm primary" id="btn-add">＋ 新增规则</button>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <div id="no-perm" class="card" style="display:none">
+        <div class="empty"><div class="big">🔒</div>需要 admin 角色才能管理权限规则</div>
+      </div>
+
+      <div id="main-pane">
+        <div class="card">
+          <div class="card-title">ACL 规则 <span class="hint">按（优先级 ↓ · 路径最长前缀 ↓）排序，首条命中即裁决；全部未命中 → 默认策略</span>
+            <span class="spacer"></span>
+            <button class="btn xs ghost" id="btn-refresh">⟳</button>
+          </div>
+          <div class="table-wrap"><table class="tbl">
+            <thead><tr>
+              <th>优先级</th><th>路径前缀</th><th>主体</th><th>权限位</th><th>效果</th><th>备注</th><th>操作</th>
+            </tr></thead>
+            <tbody id="rule-body"></tbody>
+          </table></div>
+        </div>
+
+        <div class="grid cols-2">
+          <div class="card">
+            <div class="card-title">默认策略 <span class="hint">未命中任何规则时按角色放行</span></div>
+            <div id="policy-box"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">权限判定测试器 <span class="hint">输入 用户 + 路径 + 操作，查看完整判定轨迹</span></div>
+            <div class="form-row" style="margin-bottom:12px">
+              <label class="fl" style="flex:1">用户
+                <select id="t-user"></select></label>
+              <label class="fl" style="flex:1.4">路径
+                <input type="text" id="t-path" value="/finance/payroll-q3.csv"></label>
+              <label class="fl">操作
+                <select id="t-action">
+                  <option value="read">read</option>
+                  <option value="write">write</option>
+                  <option value="delete">delete</option>
+                  <option value="admin">admin</option>
+                </select></label>
+              <button class="btn primary" id="t-run">判定</button>
+            </div>
+            <div id="t-out" class="tester-out"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtTs, toast, confirmDlg, modal } = DFSVS;
+
+let users = [];
+const PERM_BITS = ["read", "write", "delete", "admin"];
+
+async function loadRules() {
+  try {
+    const d = await api("GET", "/api/perms");
+    document.getElementById("no-perm").style.display = "none";
+    document.getElementById("main-pane").style.display = "";
+    renderRules(d.rules);
+    renderPolicy(d.default_policy);
+  } catch (e) {
+    if (e.status === 403) {
+      document.getElementById("no-perm").style.display = "";
+      document.getElementById("main-pane").style.display = "none";
+      document.getElementById("btn-add").style.display = "none";
+    } else toast(e.message, "bad");
+  }
+}
+
+function renderRules(rules) {
+  document.getElementById("rule-body").innerHTML = rules.length ? rules.map(r => `
+    <tr>
+      <td class="num">${r.priority}</td>
+      <td class="rule-path">${esc(r.path)}${r.path === "/" ? ' <span class="muted small">(全局)</span>' : ""}</td>
+      <td>
+        <span class="badge ${r.principal_type === "role" ? "violet" : "acc"} plain">
+          ${r.principal_type === "role" ? "角色" : "用户"}:${esc(r.principal)}</span>
+      </td>
+      <td>${r.perms.map(p => `<span class="chip">${esc(p)}</span>`).join(" ")}</td>
+      <td>${r.effect === "allow" ? '<span class="badge ok plain">允许</span>' : '<span class="badge bad plain">拒绝</span>'}</td>
+      <td class="small dim">${esc(r.note || "-")}</td>
+      <td class="nowrap">
+        <button class="btn xs r-edit" data-r='${esc(JSON.stringify(r))}'>✎</button>
+        <button class="btn xs danger r-del" data-id="${esc(r.id)}">删除</button>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="7" class="empty small">暂无规则（全部走默认策略）</td></tr>`;
+
+  document.querySelectorAll(".r-edit").forEach(b => b.onclick = () =>
+    ruleDialog(JSON.parse(b.dataset.r)));
+  document.querySelectorAll(".r-del").forEach(b => b.onclick = () =>
+    confirmDlg("删除该 ACL 规则？", async () => {
+      try { await api("DELETE", "/api/perms/" + encodeURIComponent(b.dataset.id));
+            toast("已删除", "ok"); loadRules(); }
+      catch (e) { toast(e.message, "bad"); }
+    }, true));
+}
+
+function renderPolicy(policy) {
+  document.getElementById("policy-box").innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>操作</th><th>默认允许的角色</th></tr></thead>
+      <tbody>${Object.entries(policy || {}).map(([action, roles]) => `
+        <tr><td class="mono">${esc(action)}</td>
+        <td>${roles.map(r => `<span class="badge acc plain">${esc(r)}</span>`).join(" ")}</td></tr>`).join("")}
+      </tbody>
+    </table>
+    <div class="small muted" style="margin-top:8px">
+      默认策略存于 perms.json，admin 角色始终具备全部能力位。</div>`;
+}
+
+function ruleDialog(existing) {
+  const isEdit = !!existing;
+  const r = existing || { path: "/", principal: "", principal_type: "user",
+                          perms: ["read"], effect: "allow", priority: 100, note: "" };
+  const body = document.createElement("div");
+  body.innerHTML = `
+    <div class="form-row" style="margin-bottom:10px">
+      <label class="fl" style="flex:1.4">路径前缀
+        <input type="text" id="r-path" value="${esc(r.path)}" placeholder="/finance"></label>
+      <label class="fl">优先级
+        <input type="number" id="r-prio" value="${r.priority}"></label>
+    </div>
+    <div class="form-row" style="margin-bottom:10px">
+      <label class="fl">主体类型
+        <select id="r-ptype">
+          <option value="user" ${r.principal_type === "user" ? "selected" : ""}>用户</option>
+          <option value="role" ${r.principal_type === "role" ? "selected" : ""}>角色</option>
+        </select></label>
+      <label class="fl" style="flex:1">主体
+        <input type="text" id="r-principal" value="${esc(r.principal)}" list="principal-list"
+               placeholder="用户名或角色名"></label>
+        <datalist id="principal-list">
+          ${users.map(u => `<option value="${esc(u.username)}">`).join("")}
+          <option value="admin"><option value="operator"><option value="viewer">
+        </datalist>
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="small muted" style="margin-bottom:5px">权限位</div>
+      ${PERM_BITS.map(p => `
+        <label class="perm-bit"><input type="checkbox" class="r-perm" value="${p}"
+          ${r.perms.includes(p) ? "checked" : ""}> ${p}</label>`).join("")}
+    </div>
+    <div class="form-row" style="margin-bottom:10px">
+      <label class="fl">效果
+        <select id="r-effect">
+          <option value="allow" ${r.effect === "allow" ? "selected" : ""}>允许 allow</option>
+          <option value="deny" ${r.effect === "deny" ? "selected" : ""}>拒绝 deny</option>
+        </select></label>
+      <label class="fl" style="flex:2">备注
+        <input type="text" id="r-note" value="${esc(r.note || "")}"></label>
+    </div>`;
+  modal({
+    title: isEdit ? "编辑 ACL 规则" : "新增 ACL 规则", body, wide: false,
+    okText: isEdit ? "保存" : "创建",
+    onOk: async (bodyEl) => {
+      const payload = {
+        path: bodyEl.querySelector("#r-path").value.trim() || "/",
+        principal: bodyEl.querySelector("#r-principal").value.trim(),
+        principal_type: bodyEl.querySelector("#r-ptype").value,
+        perms: [...bodyEl.querySelectorAll(".r-perm:checked")].map(x => x.value),
+        effect: bodyEl.querySelector("#r-effect").value,
+        priority: +bodyEl.querySelector("#r-prio").value || 100,
+        note: bodyEl.querySelector("#r-note").value,
+      };
+      if (!payload.principal) { toast("请填写主体", "warn"); return false; }
+      if (!payload.perms.length) { toast("至少选择一个权限位", "warn"); return false; }
+      try {
+        if (isEdit) await api("PUT", "/api/perms/" + encodeURIComponent(r.id), payload);
+        else await api("POST", "/api/perms", payload);
+        toast(isEdit ? "规则已更新" : "规则已创建", "ok");
+        loadRules();
+      } catch (e) { toast(e.message, "bad"); return false; }
+    }
+  });
+}
+
+document.getElementById("btn-add").onclick = () => ruleDialog(null);
+document.getElementById("btn-refresh").onclick = loadRules;
+
+// ------------------------------------------------------------------ 测试器
+async function loadUsersForTester() {
+  try {
+    users = (await api("GET", "/api/users")).users;
+  } catch (e) {
+    users = [{ username: "admin" }, { username: "alice" }, { username: "bob" }];
+  }
+  document.getElementById("t-user").innerHTML =
+    users.map(u => `<option value="${esc(u.username)}">${esc(u.username)}（${esc(u.role)}）</option>`).join("");
+}
+
+document.getElementById("t-run").onclick = async () => {
+  const out = document.getElementById("t-out");
+  out.innerHTML = `<span class="muted small">判定中 …</span>`;
+  try {
+    const r = await api("POST", "/api/perms/check", {
+      username: document.getElementById("t-user").value,
+      path: document.getElementById("t-path").value.trim() || "/",
+      action: document.getElementById("t-action").value,
+    });
+    out.innerHTML = `
+      <div style="margin-bottom:10px">
+        ${r.allowed
+          ? `<span class="badge ok" style="font-size:13px">✓ 允许</span>`
+          : `<span class="badge bad" style="font-size:13px">✕ 拒绝</span>`}
+        <span class="small muted" style="margin-left:8px">裁决依据：${esc(r.reason)}</span>
+      </div>
+      <div class="trace-box">
+        ${r.trace.map(s => `<div class="step">→ ${esc(s)}</div>`).join("")}
+      </div>`;
+  } catch (e) {
+    out.innerHTML = `<span class="badge bad plain">${esc(e.message)}</span>`;
+  }
+};
+
+initPage("permissions.html", "权限设置").then(async () => {
+  await loadUsersForTester();
+  loadRules();
+  document.getElementById("t-run").click();
+});
+</script>
+</body>
+</html>

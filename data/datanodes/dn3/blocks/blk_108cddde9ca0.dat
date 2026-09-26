@@ -1,0 +1,23 @@
+"""demo_utils.py — 通用小工具（新增 retry）"""
+
+
+def human_size(n):
+    for unit in ("B", "K", "M", "G"):
+        if n < 1024:
+            return f"{n:.1f}{unit}"
+        n /= 1024
+    return f"{n:.1f}T"
+
+
+def chunked(seq, size):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
+
+def retry(fn, times=3):
+    for i in range(times):
+        try:
+            return fn()
+        except Exception:
+            if i == times - 1:
+                raise

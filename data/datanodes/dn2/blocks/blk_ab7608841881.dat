@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="200" viewBox="0 0 360 200">
+  <rect width="360" height="200" rx="12" fill="#10141f"/>
+  <rect x="30" y="30" width="120" height="46" rx="8" fill="#1c2436" stroke="#4f8cff"/>
+  <text x="90" y="58" fill="#dbe2f1" font-size="13" text-anchor="middle" font-family="monospace">NameNode</text>
+  <rect x="210" y="20" width="120" height="34" rx="8" fill="#1c2436" stroke="#2fbf71"/>
+  <text x="270" y="42" fill="#dbe2f1" font-size="12" text-anchor="middle" font-family="monospace">DataNode-1</text>
+  <rect x="210" y="70" width="120" height="34" rx="8" fill="#1c2436" stroke="#2fbf71"/>
+  <text x="270" y="92" fill="#dbe2f1" font-size="12" text-anchor="middle" font-family="monospace">DataNode-2</text>
+  <rect x="210" y="120" width="120" height="34" rx="8" fill="#1c2436" stroke="#f0a538"/>
+  <text x="270" y="142" fill="#dbe2f1" font-size="12" text-anchor="middle" font-family="monospace">DataNode-3</text>
+  <line x1="150" y1="45" x2="210" y2="37" stroke="#3a4460" stroke-width="2"/>
+  <line x1="150" y1="53" x2="210" y2="87" stroke="#3a4460" stroke-width="2"/>
+  <line x1="150" y1="61" x2="210" y2="137" stroke="#3a4460" stroke-width="2"/>
+  <text x="180" y="185" fill="#8b93a7" font-size="11" text-anchor="middle" font-family="monospace">heartbeat / block-report / replicate (HTTP)</text>
+</svg>

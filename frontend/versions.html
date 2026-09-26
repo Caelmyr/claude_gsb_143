@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>版本历史 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .branch-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .branch-chip {
+    display:inline-flex; align-items:center; gap:7px; cursor:pointer;
+    background:var(--panel-2); border:1px solid var(--border);
+    padding:5px 12px; border-radius:20px; font-size:12.5px; font-family:var(--mono);
+  }
+  .branch-chip:hover { border-color:var(--accent); }
+  .branch-chip.head { background:var(--accent-soft); border-color:var(--accent); color:#cfe0ff; }
+  .branch-chip .cnt { color:var(--muted); font-size:11px; }
+  .lane-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:2px; }
+  .cf-file { color:var(--bad); font-family:var(--mono); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">版本历史</h1>
+        <div class="sub" id="page-sub">提交时间线 · 分支 · 三方合并与冲突处理</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <!-- 分支栏 -->
+      <div class="card">
+        <div class="card-title">分支
+          <span class="hint" id="dirty-hint"></span>
+          <span class="spacer"></span>
+          <button class="btn sm primary" id="btn-commit">✔ 提交工作区</button>
+          <button class="btn sm" id="btn-branch">⑂ 新建分支</button>
+          <button class="btn sm" id="btn-merge">⇄ 合并…</button>
+          <button class="btn sm" id="btn-checkout" title="把选中分支物化到文件系统">⎇ 检出</button>
+        </div>
+        <div class="branch-bar" id="branch-bar"></div>
+      </div>
+
+      <div class="split-view">
+        <!-- 时间线 -->
+        <div class="side grow">
+          <div class="card">
+            <div class="card-title">提交时间线 <span class="hint" id="tl-hint"></span>
+              <span class="spacer"></span>
+              <button class="btn xs ghost" id="btn-more">加载更多</button>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </div>
+        </div>
+
+        <!-- 文件历史侧栏 -->
+        <div class="side fixed">
+          <div class="card" id="file-hist-card" style="display:none">
+            <div class="card-title"><span id="fh-title">文件历史</span>
+              <span class="spacer"></span><button class="btn xs ghost" id="fh-close">✕</button>
+            </div>
+            <div id="fh-body"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">仓库统计</div>
+            <div id="repo-stats" class="kv"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">操作说明</div>
+            <div class="small dim" style="line-height:1.8">
+              · <b>提交</b>把当前文件树快照存入版本树（块引用不可变）<br>
+              · <b>合并</b>以 LCA 为 base 做三方合并；文本冲突写入
+              <span class="mono"><<<<<<<</span> 标记<br>
+              · <b>检出</b>将分支头快照物化回文件系统（未提交修改会自动提交保护）<br>
+              · 点击提交可展开变更文件，点击文件名查看该提交的行级差异
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtTs, fmtAgo, toast, modal, confirmDlg, promptDlg } = DFSVS;
+
+let curBranch = DFSVS.qs("branch", "") || null;   // null => head_branch
+let headBranch = "main";
+let shownCommits = 30;
+const LANE_COLORS = ["#4f8cff", "#9b6cff", "#2fbf71", "#f0a538", "#39bcd0", "#f26ca7"];
+
+// ------------------------------------------------------------------ 分支
+async function loadBranches() {
+  const d = await api("GET", "/api/version/branches");
+  headBranch = d.head_branch;
+  if (!curBranch) curBranch = headBranch;
+  const bar = document.getElementById("branch-bar");
+  bar.innerHTML = d.branches.map(b => `
+    <span class="branch-chip ${b.name === curBranch ? "head" : ""}" data-b="${esc(b.name)}"
+          title="${esc(b.desc || "")}">
+      ${b.is_head ? "★" : "⑂"} ${esc(b.name)}
+      <span class="cnt">${b.commit_count}c${b.dirty ? " · 脏" : ""}</span>
+      ${b.name !== "main" ? `<span class="cnt del-br" data-b="${esc(b.name)}" title="删除分支">✕</span>` : ""}
+    </span>`).join("");
+  bar.querySelectorAll(".branch-chip").forEach(el => {
+    el.onclick = (e) => {
+      if (e.target.classList.contains("del-br")) {
+        const name = e.target.dataset.b;
+        confirmDlg(`删除分支 ${name}？（提交仍保留在版本树中）`, async () => {
+          try { await api("POST", "/api/version/branch_delete", { name });
+                toast("分支已删除", "ok"); if (curBranch === name) curBranch = null; loadAll(); }
+          catch (err) { toast(err.message, "bad"); }
+        }, true);
+        return;
+      }
+      curBranch = el.dataset.b;
+      shownCommits = 30;
+      loadAll();
+    };
+  });
+  // 工作区脏标记
+  try {
+    const wd = await api("GET", "/api/version/working_diff?branch=" + encodeURIComponent(headBranch));
+    document.getElementById("dirty-hint").innerHTML = wd.dirty
+      ? `<span class="badge warn">工作区有 ${wd.stats.files} 个文件未提交</span>`
+      : `<span class="badge ok">工作区干净（HEAD = ${headBranch}）</span>`;
+  } catch (e) {}
+}
+
+// ------------------------------------------------------------------ 时间线
+async function loadTimeline() {
+  if (!curBranch) curBranch = headBranch || "main";
+  const d = await api("GET", `/api/version/graph?branch=${encodeURIComponent(curBranch)}&limit=${shownCommits}`);
+  document.getElementById("tl-hint").textContent =
+    `分支 ${d.branch} · 共 ${d.total} 个提交（显示 ${d.commits.length}）`;
+  const box = document.getElementById("timeline");
+  if (!d.commits.length) {
+    box.innerHTML = `<div class="empty"><div class="big">⑂</div>该分支还没有提交</div>`;
+    return;
+  }
+  box.innerHTML = d.commits.map(c => `
+    <div class="tl-item ${c.is_merge ? "merge" : ""} ${c.conflicts && c.conflicts.length ? "conflict" : ""}" data-id="${esc(c.id)}">
+      <div class="tl-head">
+        <span class="lane-dot" style="background:${LANE_COLORS[c.lane || 0]}"></span>
+        <span class="chip">${esc(c.short)}</span>
+        ${c.is_merge ? '<span class="badge violet plain">merge</span>' : ""}
+        ${(c.refs || []).map(r => `<span class="badge ${r === headBranch ? "acc" : "dim"} plain">${esc(r)}${r === headBranch ? " ★" : ""}</span>`).join(" ")}
+        <span class="tl-msg">${esc(c.message)}</span>
+      </div>
+      <div class="tl-meta">
+        ${esc(c.author)} · ${fmtTs(c.ts)}（${fmtAgo(c.ts)}）
+        · 父 ${c.parents_short.length ? c.parents_short.map(esc).join(", ") : "（根提交）"}
+        ${c.stats ? ` · <span style="color:var(--ok)">+${c.stats.added || 0}</span> <span style="color:var(--bad)">-${c.stats.deleted || 0}</span> ~${c.stats.modified || 0}` : ""}
+        · tree ${esc(c.tree_hash)}
+      </div>
+      ${c.conflicts && c.conflicts.length ? `
+        <div style="margin-top:6px">
+          <span class="badge bad plain">合并冲突 ${c.conflicts.length}</span>
+          ${c.conflicts.map(x => `<span class="cf-file">${esc(x.path)}（${esc(x.kind)}）</span>`).join(" ")}
+        </div>` : ""}
+      <div class="tl-files"><div class="small muted">展开中 …</div></div>
+    </div>`).join("");
+  box.querySelectorAll(".tl-item").forEach(el => {
+    el.onclick = async () => {
+      const wasOpen = el.classList.contains("open");
+      box.querySelectorAll(".tl-item.open").forEach(x => x.classList.remove("open"));
+      if (wasOpen) return;
+      el.classList.add("open");
+      const filesBox = el.querySelector(".tl-files");
+      if (filesBox.dataset.loaded) return;
+      try {
+        const id = el.dataset.id;
+        const parent = (await commitRaw(id)).parent_ids[0] || "";
+        const d = await api("GET", `/api/version/diff?a=${encodeURIComponent(parent)}&b=${encodeURIComponent(id)}`);
+        filesBox.innerHTML = renderChanges(d.changes, d.stats, parent, id);
+        bindChangeClicks(filesBox, parent, id);
+        filesBox.dataset.loaded = "1";
+      } catch (e) {
+        filesBox.innerHTML = `<div class="small muted">加载失败：${esc(e.message)}</div>`;
+      }
+    };
+  });
+}
+
+async function commitRaw(id) {
+  // 通过 commits 列表接口拿 parent（graph 已含 parents_short，但需要完整 id）
+  const d = await api("GET", `/api/version/commits?branch=${encodeURIComponent(curBranch)}&limit=200`);
+  const c = d.commits.find(x => x.id === id);
+  return c || { parent_ids: [] };
+}
+
+function renderChanges(changes, stats, a, b) {
+  if (!changes.length) return `<div class="small muted" style="padding:6px 0">（与父提交相比无文件变化）</div>`;
+  return `
+    <div class="small muted" style="margin-bottom:4px">
+      ${stats.files} 个文件变化（<span style="color:var(--ok)">+${stats.adds}</span> /
+      <span style="color:var(--bad)">-${stats.dels}</span> 行）</div>
+    ${changes.map(ch => `
+      <div class="chg-row" data-p="${esc(ch.path)}" style="display:flex;gap:8px;align-items:center;padding:3px 0;cursor:pointer">
+        <span class="badge plain ${ch.kind === "added" ? "ok" : ch.kind === "deleted" ? "bad" : "warn"}">${ch.kind === "added" ? "A" : ch.kind === "deleted" ? "D" : "M"}</span>
+        <span class="mono small" style="flex:1">${esc(ch.path)}</span>
+        ${ch.adds !== undefined ? `<span class="small mono"><span style="color:var(--ok)">+${ch.adds}</span> <span style="color:var(--bad)">-${ch.dels}</span></span>` : ""}
+        ${ch.binary ? '<span class="badge dim plain">二进制</span>' : ""}
+        <span class="small muted mono">${DFSVS.fmtBytes(ch.new_size || ch.old_size)}</span>
+      </div>`).join("")}`;
+}
+
+function bindChangeClicks(container, a, b) {
+  container.querySelectorAll(".chg-row").forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const p = el.dataset.p;
+      location.href = `diff.html?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&path=${encodeURIComponent(p)}`;
+    };
+  });
+}
+
+document.getElementById("btn-more").onclick = () => { shownCommits += 30; loadTimeline(); };
+
+// ------------------------------------------------------------------ 提交
+document.getElementById("btn-commit").onclick = async () => {
+  let wd;
+  try { wd = await api("GET", "/api/version/working_diff"); } catch (e) { wd = { changes: [], dirty: false }; }
+  const listHtml = wd.changes.length
+    ? renderChanges(wd.changes, wd.stats, "", "")
+    : `<div class="empty small">工作区与 HEAD 一致，没有可提交的修改</div>`;
+  const body = document.createElement("div");
+  body.innerHTML = `
+    <label class="fl" style="margin-bottom:10px">提交信息
+      <textarea id="cm-msg" rows="2" placeholder="例如 feat: 支持分块上传断点续传"></textarea></label>
+    <div class="small muted" style="margin-bottom:6px">将提交到分支 <b>${esc(headBranch)}</b>：</div>
+    <div class="scroll-y" style="max-height:240px">${listHtml}</div>`;
+  modal({
+    title: "提交工作区快照", body, okText: "提交",
+    onOk: async (bodyEl) => {
+      const msg = bodyEl.querySelector("#cm-msg").value.trim();
+      if (!msg) { toast("请填写提交信息", "warn"); return false; }
+      try {
+        const r = await api("POST", "/api/version/commit", { message: msg });
+        toast(`已提交 ${r.commit.short}（${r.stats.files_changed} 个文件）`, "ok");
+        loadAll();
+      } catch (e) { toast("提交失败：" + e.message, "bad"); return false; }
+    }
+  });
+  bindChangeClicks(body, "HEAD", "WORKING");
+};
+
+// ------------------------------------------------------------------ 分支
+document.getElementById("btn-branch").onclick = async () => {
+  const brs = await api("GET", "/api/version/branches");
+  promptDlg("新建分支", [
+    { name: "name", label: "分支名", placeholder: "feature-xyz" },
+    { name: "from", label: "起点", type: "select",
+      options: brs.branches.map(b => ({ value: b.name, label: `${b.name}（${b.head_short || "空"}）` })) },
+    { name: "desc", label: "描述（可选）" },
+  ], async (v) => {
+    try {
+      await api("POST", "/api/version/branch", v);
+      toast(`分支 ${v.name} 已创建`, "ok");
+      curBranch = v.name;
+      loadAll();
+    } catch (e) { toast("创建失败：" + e.message, "bad"); }
+  });
+};
+
+// ------------------------------------------------------------------ 合并
+document.getElementById("btn-merge").onclick = async () => {
+  const brs = await api("GET", "/api/version/branches");
+  const others = brs.branches.filter(b => b.name !== brs.head_branch);
+  if (!others.length) return toast("没有可合并的其它分支", "warn");
+  const body = document.createElement("div");
+  body.innerHTML = `
+    <div class="form-row" style="margin-bottom:12px">
+      <label class="fl" style="flex:1">源分支（被合并方）
+        <select id="mg-src">${others.map(b =>
+          `<option value="${esc(b.name)}">${esc(b.name)} · ${esc(b.last_message || "").slice(0, 24)}</option>`).join("")}
+        </select></label>
+      <label class="fl" style="flex:1">目标分支
+        <input type="text" id="mg-dst" value="${esc(brs.head_branch)}" readonly></label>
+    </div>
+    <div class="small muted">合并采用三方算法：base = 两分支的最近公共祖先（LCA）。
+      文本冲突将写入 <span class="mono">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</span> 标记并提交为冲突待解决状态。</div>
+    <div id="mg-result" style="margin-top:12px"></div>`;
+  const m = modal({
+    title: "合并分支", body, wide: true, okText: "执行合并",
+    onOk: async (bodyEl) => {
+      const src = bodyEl.querySelector("#mg-src").value;
+      const dst = bodyEl.querySelector("#mg-dst").value;
+      const out = bodyEl.querySelector("#mg-result");
+      out.innerHTML = `<div class="small muted">合并中 …</div>`;
+      try {
+        const r = await api("POST", "/api/version/merge", { source: src, target: dst });
+        if (r.kind === "noop") {
+          out.innerHTML = `<div class="badge ok plain">${esc(r.message || "已是最新")}</div>`;
+          return false;
+        }
+        let html = `<div class="trace-box">
+          <div class="step">${r.kind === "fast-forward" ? "⚡ 快进合并完成" : "✔ 合并提交已创建"}：
+            <span class="chip">${esc(r.commit.short)}</span> ${esc(r.commit.message)}</div>
+          <div class="step">文件变更 ${r.stats.files_changed ?? "-"} · base ${esc(r.base || "-")}</div>`;
+        if (r.conflicts && r.conflicts.length) {
+          html += `<div class="step" style="color:var(--bad)">⚠ ${r.conflicts.length} 处冲突（已写入冲突标记，提交后需人工解决）：</div>`;
+          html += r.conflicts.map(c => `
+            <div class="step">
+              <a href="diff.html?path=${encodeURIComponent(c.path)}&a=${encodeURIComponent(r.commit.id)}" class="cf-file">${esc(c.path)}</a>
+              <span class="badge bad plain">${esc(c.kind)}</span>
+              <span class="small muted">${esc(c.detail || "")}</span>
+            </div>`).join("");
+        }
+        html += `</div>`;
+        out.innerHTML = html;
+        toast(r.conflicts?.length ? `合并完成，但有 ${r.conflicts.length} 处冲突` : "合并完成",
+              r.conflicts?.length ? "warn" : "ok");
+        loadAll();
+        return false;   // 保留弹窗展示结果
+      } catch (e) {
+        out.innerHTML = `<div class="badge bad plain">${esc(e.message)}</div>`;
+        return false;
+      }
+    }
+  });
+};
+
+// ------------------------------------------------------------------ 检出
+document.getElementById("btn-checkout").onclick = () => {
+  confirmDlg(`检出分支 ${curBranch}？其头提交快照将物化到文件系统（未提交修改会自动提交保护）。`,
+    async () => {
+      try {
+        const r = await api("POST", "/api/version/checkout", { branch: curBranch });
+        toast(`已检出 ${r.branch}${r.auto_commit ? "（自动提交 " + r.auto_commit.short + "）" : ""}`, "ok");
+        headBranch = r.branch;
+        loadAll();
+      } catch (e) { toast("检出失败：" + e.message, "bad"); }
+    });
+};
+
+// ------------------------------------------------------------------ 文件历史
+async function showFileHistory(path) {
+  document.getElementById("file-hist-card").style.display = "";
+  document.getElementById("fh-title").innerHTML =
+    `<span class="mono small">${esc(path)}</span>`;
+  const box = document.getElementById("fh-body");
+  box.innerHTML = `<div class="small muted">加载中 …</div>`;
+  try {
+    const d = await api("GET", `/api/version/history?path=${encodeURIComponent(path)}&branch=${encodeURIComponent(curBranch)}`);
+    if (!d.history.length) { box.innerHTML = `<div class="empty small">该文件暂无版本记录</div>`; return; }
+    box.innerHTML = d.history.map(h => `
+      <div style="padding:7px 2px;border-bottom:1px dashed var(--border-soft)">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip">${esc(h.commit.short)}</span>
+          <span class="badge plain ${h.state === "deleted" ? "bad" : "ok"}">${h.state}</span>
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn xs fh-view" data-ref="${esc(h.commit.id)}">查看</button>
+          ${h.state !== "deleted" ? `<button class="btn xs fh-restore" data-ref="${esc(h.commit.id)}" title="把该版本恢复为当前文件">↩ 恢复</button>` : ""}
+        </div>
+        <div class="small muted mono" style="margin-top:2px">${esc(h.commit.message).slice(0, 38)} · ${fmtAgo(h.commit.ts)}</div>
+      </div>`).join("");
+    box.querySelectorAll(".fh-view").forEach(b => b.onclick = () => {
+      location.href = `diff.html?a=${encodeURIComponent(b.dataset.ref)}&b=WORKING&path=${encodeURIComponent(path)}`;
+    });
+    box.querySelectorAll(".fh-restore").forEach(b => b.onclick = async () => {
+      confirmDlg(`把 ${path} 恢复到 ${b.dataset.ref.slice(0, 12)} 的版本？`, async () => {
+        try {
+          await api("POST", "/api/version/restore", { ref: b.dataset.ref, path });
+          toast("已恢复到工作区（记得提交）", "ok");
+          loadAll();
+        } catch (e) { toast(e.message, "bad"); }
+      });
+    });
+  } catch (e) { box.innerHTML = `<div class="empty small">${esc(e.message)}</div>`; }
+}
+document.getElementById("fh-close").onclick = () =>
+  document.getElementById("file-hist-card").style.display = "none";
+
+// ------------------------------------------------------------------ 统计
+async function loadRepoStats() {
+  const s = await api("GET", "/api/version/stats");
+  document.getElementById("repo-stats").innerHTML = `
+    <span class="k">提交总数</span><span class="v">${s.commits}</span>
+    <span class="k">分支数</span><span class="v">${s.branches}</span>
+    <span class="k">HEAD</span><span class="v">${esc(s.head_branch)}</span>
+    <span class="k">合并提交</span><span class="v">${s.merge_commits}</span>
+    <span class="k">含冲突提交</span><span class="v">${s.conflicted_commits}</span>
+    <span class="k">首次提交</span><span class="v">${s.first_ts ? fmtTs(s.first_ts) : "-"}</span>`;
+}
+
+// ------------------------------------------------------------------ 汇总
+async function loadAll() {
+  await Promise.all([loadBranches(), loadTimeline(), loadRepoStats()]);
+}
+
+initPage("versions.html", "版本历史").then(() => {
+  loadAll().catch(e => toast(e.message, "bad"));
+  const p = DFSVS.qs("path");
+  if (p) showFileHistory(p);
+  DFSVS.poll(loadBranches, 10000);
+});
+</script>
+</body>
+</html>

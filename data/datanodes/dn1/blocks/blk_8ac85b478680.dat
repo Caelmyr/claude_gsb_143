@@ -1,0 +1,12 @@
+"""demo_client.py — 调用演示服务的客户端"""
+import json
+import urllib.request
+
+
+def health_check(url="http://127.0.0.1:9999/healthz", timeout=3):
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return json.loads(resp.read().decode())
+
+
+if __name__ == "__main__":
+    print(health_check())

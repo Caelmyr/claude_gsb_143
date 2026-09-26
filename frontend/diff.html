@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>差异对比 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .diff-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .perf-box { display:flex; gap:18px; flex-wrap:wrap; font-size:12.5px; font-family:var(--mono);
+              background:var(--bg-soft); border:1px solid var(--border-soft);
+              border-radius:8px; padding:8px 14px; margin-bottom:12px; }
+  .perf-box b { color:var(--accent); }
+  .file-list { max-height:280px; overflow-y:auto; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">差异对比</h1>
+        <div class="sub" id="page-sub">Myers O(ND) · Patience 锚点分治 · 三方合并冲突可视化</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <div class="tabs">
+        <div class="tab active" data-t="ver">版本差异</div>
+        <div class="tab" data-t="text">文本对比</div>
+        <div class="tab" data-t="bench">大文件性能试验台</div>
+      </div>
+
+      <!-- ============ 版本差异 ============ -->
+      <div id="pane-ver">
+        <div class="card">
+          <div class="diff-toolbar">
+            <label class="fl">A（旧）
+              <select id="ver-a" style="min-width:220px"></select></label>
+            <label class="fl">B（新）
+              <select id="ver-b" style="min-width:220px"></select></label>
+            <button class="btn primary" id="ver-run">对比</button>
+            <div class="spacer" style="flex:1"></div>
+            <label class="fl">算法
+              <select id="opt-method">
+                <option value="auto" selected>auto（智能选择）</option>
+                <option value="myers">Myers O(ND)</option>
+                <option value="patience">Patience（唯一行锚点）</option>
+                <option value="difflib">difflib（兜底）</option>
+              </select></label>
+            <label class="fl">上下文
+              <select id="opt-context">
+                <option value="0">0 行</option>
+                <option value="3" selected>3 行</option>
+                <option value="8">8 行</option>
+                <option value="999999">全部</option>
+              </select></label>
+            <label class="fl">视图
+              <select id="opt-view">
+                <option value="split" selected>双栏</option>
+                <option value="unified">单栏 unified</option>
+              </select></label>
+          </div>
+          <div id="ver-summary"></div>
+        </div>
+
+        <div class="split-view">
+          <div class="side fixed" style="width:340px;flex-basis:340px">
+            <div class="card">
+              <div class="card-title">变更文件 <span class="hint" id="ver-files-hint"></span></div>
+              <div class="file-list" id="ver-files"></div>
+            </div>
+          </div>
+          <div class="side grow">
+            <div class="card">
+              <div class="card-title"><span id="ld-title">行级差异</span></div>
+              <div class="perf-box" id="ld-perf" style="display:none"></div>
+              <div id="ld-body"><div class="empty"><div class="big">±</div>选择左侧文件查看行级差异</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 文本对比 ============ -->
+      <div id="pane-text" style="display:none">
+        <div class="card">
+          <div class="grid cols-2">
+            <label class="fl">文本 A（旧）
+              <textarea id="txt-a" rows="12" placeholder="粘贴旧版本文本…"></textarea></label>
+            <label class="fl">文本 B（新）
+              <textarea id="txt-b" rows="12" placeholder="粘贴新版本文本…"></textarea></label>
+          </div>
+          <div class="btn-group" style="margin-top:12px">
+            <button class="btn primary" id="txt-run">对比</button>
+            <button class="btn" id="txt-sample">填充示例（含冲突标记文本）</button>
+            <button class="btn ghost" id="txt-swap">⇄ 交换</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">差异结果</div>
+          <div class="perf-box" id="txt-perf" style="display:none"></div>
+          <div id="txt-out"><div class="empty"><div class="big">±</div>点击「对比」</div></div>
+        </div>
+      </div>
+
+      <!-- ============ 性能试验台 ============ -->
+      <div id="pane-bench" style="display:none">
+        <div class="card">
+          <div class="card-title">大文件差异性能 <span class="hint">前端生成 N 行文本 + 随机修改，测量服务端 diff 耗时（难点四演示）</span></div>
+          <div class="form-row" style="margin-bottom:12px">
+            <label class="fl">行数
+              <select id="bench-lines">
+                <option value="2000">2,000</option>
+                <option value="10000" selected>10,000</option>
+                <option value="30000">30,000</option>
+                <option value="80000">80,000</option>
+              </select></label>
+            <label class="fl">修改比例
+              <select id="bench-ratio">
+                <option value="0.01">1%</option>
+                <option value="0.05" selected>5%</option>
+                <option value="0.2">20%</option>
+                <option value="0.5">50%（最坏情况）</option>
+              </select></label>
+            <label class="fl">修改形态
+              <select id="bench-mode">
+                <option value="local" selected>局部聚集（模拟真实编辑）</option>
+                <option value="scatter">全篇散布</option>
+                <option value="insert">头部大块插入（CDC 场景）</option>
+              </select></label>
+            <button class="btn primary" id="bench-run">运行基准</button>
+          </div>
+          <div id="bench-out" class="table-wrap"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, toast } = DFSVS;
+
+// ------------------------------------------------------------------ 页签
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  t.classList.add("active");
+  ["ver", "text", "bench"].forEach(k =>
+    document.getElementById("pane-" + k).style.display = k === t.dataset.t ? "" : "none");
+});
+
+// ------------------------------------------------------------------ 版本差异
+let refs = [];
+let curFile = null;
+
+async function loadRefs() {
+  const [brs, commits] = await Promise.all([
+    api("GET", "/api/version/branches"),
+    api("GET", "/api/version/commits?limit=60"),
+  ]);
+  refs = [];
+  refs.push({ value: "WORKING", label: "★ WORKING（活动文件区）" });
+  brs.branches.forEach(b => refs.push({ value: b.name, label: `⑂ ${b.name}（${b.head_short}）` }));
+  commits.commits.forEach(c => refs.push({ value: c.id, label: `· ${c.short} ${c.message.slice(0, 26)}` }));
+  const optHtml = refs.map(r => `<option value="${esc(r.value)}">${esc(r.label)}</option>`).join("");
+  document.getElementById("ver-a").innerHTML = optHtml;
+  document.getElementById("ver-b").innerHTML = optHtml;
+  // 默认 A = 第一个提交的父…简化：A = HEAD~（第二个提交），B = WORKING
+  const qA = DFSVS.qs("a"), qB = DFSVS.qs("b");
+  document.getElementById("ver-a").value = qA || (commits.commits[1]?.id ?? brs.head_branch);
+  document.getElementById("ver-b").value = qB || "WORKING";
+}
+
+document.getElementById("ver-run").onclick = runVerDiff;
+
+async function runVerDiff() {
+  const a = document.getElementById("ver-a").value;
+  const b = document.getElementById("ver-b").value;
+  const box = document.getElementById("ver-summary");
+  box.innerHTML = `<span class="muted small">对比中 …</span>`;
+  try {
+    let d;
+    if (b === "WORKING") {
+      d = await api("GET", `/api/version/working_diff${a && a !== "WORKING" ? "" : ""}`);
+      if (a && a !== "WORKING") {
+        // A vs 工作区：后端无直接接口 => 用 diff_refs 到 HEAD 再加 working_diff 近似
+        d = await api("GET", `/api/version/diff?a=${encodeURIComponent(a)}&b=HEAD`);
+        const w = await api("GET", "/api/version/working_diff");
+        if (w.dirty) {
+          const map = new Map(d.changes.map(c => [c.path, c]));
+          w.changes.forEach(c => map.set(c.path, { ...map.get(c.path), ...c }));
+          d.changes = [...map.values()];
+        }
+      }
+    } else {
+      d = await api("GET", `/api/version/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+    }
+    box.innerHTML = `<span class="small muted">${esc(d.a_label || a)} → ${esc(d.b_label || b)}：
+      <b>${d.stats.files}</b> 个文件变化 ·
+      <span style="color:var(--ok)">+${d.stats.adds}</span> /
+      <span style="color:var(--bad)">-${d.stats.dels}</span> 行 ·
+      A ${d.stats.added} / M ${d.stats.modified} / D ${d.stats.deleted}</span>`;
+    renderFileList(d.changes, a, b);
+    const qp = DFSVS.qs("path");
+    if (qp) { showLineDiff(qp, a, b); }
+    else if (d.changes.length === 1) showLineDiff(d.changes[0].path, a, b);
+  } catch (e) {
+    box.innerHTML = `<span class="badge bad plain">${esc(e.message)}</span>`;
+  }
+}
+
+function renderFileList(changes, a, b) {
+  document.getElementById("ver-files-hint").textContent = changes.length + " 个";
+  const box = document.getElementById("ver-files");
+  if (!changes.length) { box.innerHTML = `<div class="empty small">两个引用之间没有差异</div>`; return; }
+  box.innerHTML = changes.map(c => `
+    <div class="t-node vf" data-p="${esc(c.path)}" style="padding:6px 8px">
+      <span class="badge plain ${c.kind === "added" ? "ok" : c.kind === "deleted" ? "bad" : "warn"}">${c.kind[0].toUpperCase()}</span>
+      <span class="mono small" style="overflow:hidden;text-overflow:ellipsis">${esc(c.path)}</span>
+      <span class="ts small mono">${c.adds !== undefined ? `+${c.adds}/-${c.dels}` : fmtBytes(c.new_size)}</span>
+    </div>`).join("");
+  box.querySelectorAll(".vf").forEach(el =>
+    el.onclick = () => showLineDiff(el.dataset.p, a, b));
+}
+
+async function showLineDiff(path, a, b) {
+  curFile = path;
+  document.getElementById("ld-title").innerHTML = `行级差异 <span class="mono small muted">${esc(path)}</span>`;
+  const body = document.getElementById("ld-body");
+  body.innerHTML = `<div class="empty small">计算中 …</div>`;
+  document.querySelectorAll(".vf").forEach(el =>
+    el.classList.toggle("sel", el.dataset.p === path));
+  try {
+    const r = await api("POST", "/api/version/diff_text", {
+      path, a_ref: a === "WORKING" ? "" : a, b_ref: b,
+      method: document.getElementById("opt-method").value,
+      context: +document.getElementById("opt-context").value,
+      view: document.getElementById("opt-view").value,
+    });
+    renderPerf("ld-perf", r.timing, r.label_a, r.label_b);
+    body.innerHTML = document.getElementById("opt-view").value === "split"
+      ? renderSplit(r.split) : renderUnified(r.unified);
+  } catch (e) {
+    body.innerHTML = `<div class="empty small">${esc(e.message)}</div>`;
+  }
+}
+
+["opt-method", "opt-context", "opt-view"].forEach(id =>
+  document.getElementById(id).onchange = () => {
+    if (curFile) showLineDiff(curFile,
+      document.getElementById("ver-a").value,
+      document.getElementById("ver-b").value);
+  });
+
+// ------------------------------------------------------------------ 渲染
+function renderPerf(elId, t, la, lb) {
+  const el = document.getElementById(elId);
+  el.style.display = "";
+  el.innerHTML = `
+    <span>算法 <b>${esc(t.method)}</b></span>
+    <span>行数 <b>${t.lines_a} → ${t.lines_b}</b></span>
+    <span>耗时 <b>${t.elapsed_ms} ms</b></span>
+    <span>差异段 <b>${t.hunks}</b></span>
+    <span><b style="color:var(--ok)">+${t.stats.adds}</b> / <b style="color:var(--bad)">-${t.stats.dels}</b></span>
+    <span>相似度 <b>${(t.stats.similarity * 100).toFixed(1)}%</b></span>
+    <span class="muted">${esc(String(la))} ⇢ ${esc(String(lb))}</span>`;
+}
+
+function renderUnified(hunks) {
+  if (!hunks.length) return `<div class="empty small">内容完全一致</div>`;
+  return `<div class="diff-box diff-unified">` + hunks.map(h => `
+    <div class="drow hunk"><span class="ln"></span><span class="tx">${esc(h.header)}</span></div>
+    ${h.rows.map(r => `
+      <div class="drow ${r.kind}">
+        <span class="ln">${r.a_no ?? ""}</span>
+        <span class="ln">${r.b_no ?? ""}</span>
+        <span class="tx">${r.kind === "add" ? "+ " : r.kind === "del" ? "- " : "  "}${esc(r.text)}</span>
+      </div>`).join("")}`).join("") + `</div>`;
+}
+
+function renderSplit(rows) {
+  if (!rows.length) return `<div class="empty small">内容完全一致</div>`;
+  const segHtml = (segs, text) => segs
+    ? segs.map(([s, ch]) => ch ? `<span class="seg-hl">${esc(s)}</span>` : esc(s)).join("")
+    : esc(text ?? "");
+  return `<div class="diff-box"><table class="diff-split">` + rows.map(r => {
+    if (r.cls === "gap") return `<tr class="gap"><td colspan="4">${esc(r.text)}</td></tr>`;
+    return `<tr class="${r.cls}">
+      <td class="ln">${r.l_no ?? ""}</td>
+      <td class="txt left">${segHtml(r.segs_l, r.l_text)}</td>
+      <td class="ln">${r.r_no ?? ""}</td>
+      <td class="txt right">${segHtml(r.segs_r, r.r_text)}</td>
+    </tr>`;
+  }).join("") + `</table></div>`;
+}
+
+// ------------------------------------------------------------------ 文本对比
+document.getElementById("txt-run").onclick = async () => {
+  const a = document.getElementById("txt-a").value;
+  const b = document.getElementById("txt-b").value;
+  const t0 = performance.now();
+  try {
+    const r = await api("POST", "/api/version/diff_text", {
+      a_text: a, b_text: b,
+      method: document.getElementById("opt-method").value,
+      context: +document.getElementById("opt-context").value,
+      view: document.getElementById("opt-view").value,
+      label_a: "文本 A", label_b: "文本 B",
+    });
+    const rt = performance.now() - t0;
+    renderPerf("txt-perf", r.timing, "文本 A", "文本 B");
+    document.getElementById("txt-perf").innerHTML +=
+      `<span>网络往返 <b>${rt.toFixed(1)} ms</b></span>`;
+    document.getElementById("txt-out").innerHTML =
+      document.getElementById("opt-view").value === "split"
+        ? renderSplit(r.split) : renderUnified(r.unified);
+  } catch (e) { toast(e.message, "bad"); }
+};
+
+document.getElementById("txt-sample").onclick = () => {
+  document.getElementById("txt-a").value =
+`# 周会纪要（2026-09 第 3 周）
+
+## 议题一：副本恢复延迟
+结论：恢复调度限流从 32 提升到 64。
+
+## 议题二：回收站保留期
+结论：保留期维持 7 天。
+
+## 行动项
+- [ ] admin：压测 5MB 文件的行级 diff`;
+  document.getElementById("txt-b").value =
+`# 周会纪要（2026-09 第 3 周）
+
+<<<<<<< ours (main)
+## 议题一：副本恢复延迟
+结论：恢复调度限流从 32 提升到 64。
+=======
+## 议题一：副本恢复延迟
+结论：恢复调度限流从 32 提升到 128，并引入优先级队列。
+>>>>>>> theirs (feature-ui)
+
+## 议题二：回收站保留期
+结论：保留期维持 7 天，财务目录延长到 30 天。
+
+## 行动项
+- [x] admin：压测 5MB 文件的行级 diff（通过）
+- [ ] alice：补充断点续传 E2E 用例`;
+  document.getElementById("txt-run").click();
+};
+
+document.getElementById("txt-swap").onclick = () => {
+  const a = document.getElementById("txt-a");
+  const b = document.getElementById("txt-b");
+  [a.value, b.value] = [b.value, a.value];
+};
+
+// ------------------------------------------------------------------ 基准
+document.getElementById("bench-run").onclick = async () => {
+  const n = +document.getElementById("bench-lines").value;
+  const ratio = +document.getElementById("bench-ratio").value;
+  const mode = document.getElementById("bench-mode").value;
+  const out = document.getElementById("bench-out");
+  out.innerHTML = `<div class="empty small">生成 ${n} 行测试文本 …</div>`;
+  await new Promise(r => setTimeout(r, 30));
+
+  // 生成 A
+  const a = new Array(n);
+  for (let i = 0; i < n; i++) a[i] = `2026-09-${String(i % 28 + 1).padStart(2, "0")} svc[${i % 97}] level=INFO msg="event ${i} payload=${"x".repeat(i % 40)}"`;
+  // 生成 B
+  const b = a.slice();
+  const edits = Math.floor(n * ratio);
+  if (mode === "insert") {
+    for (let k = 0; k < edits; k++) b.splice(k * 3, 0, `INSERTED BLOCK LINE ${k} ${"#".repeat(30)}`);
+  } else {
+    const centers = mode === "local"
+      ? Array.from({ length: Math.max(1, edits / 40 | 0) }, () => Math.random() * n | 0)
+      : null;
+    for (let k = 0; k < edits; k++) {
+      const pos = centers ? (centers[k % centers.length] + (k % 40)) % n : Math.random() * n | 0;
+      if (k % 3 === 0) b[pos] = b[pos] + " [EDITED]";
+      else if (k % 3 === 1) b[pos] = `REPLACED ${k} ` + b[pos].slice(10);
+      else b.splice(pos, 1);
+    }
+  }
+  const bytes = a.join("\n").length + b.join("\n").length;
+  out.innerHTML = `<div class="empty small">对比中（${fmtBytes(bytes)} 传输）…</div>`;
+  await new Promise(r => setTimeout(r, 30));
+
+  const results = [];
+  for (const method of ["auto", "myers", "patience"]) {
+    const t0 = performance.now();
+    try {
+      const r = await api("POST", "/api/version/diff_text", {
+        a_text: a.join("\n"), b_text: b.join("\n"), method, context: 0, view: "unified",
+      });
+      results.push({ method: r.timing.method === method ? method : `${method}→${r.timing.method}`,
+                     ms: r.timing.elapsed_ms, rt: performance.now() - t0,
+                     hunks: r.timing.hunks,
+                     adds: r.timing.stats.adds, dels: r.timing.stats.dels });
+    } catch (e) {
+      results.push({ method, ms: -1, err: e.message });
+    }
+  }
+  out.innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>请求算法</th><th class="right">服务端耗时</th><th class="right">含网络往返</th>
+        <th class="right">差异段</th><th class="right">+行</th><th class="right">-行</th><th>说明</th></tr></thead>
+      <tbody>
+      ${results.map(r => `
+        <tr>
+          <td class="mono">${esc(r.method)}</td>
+          <td class="num right">${r.ms >= 0 ? r.ms + " ms" : "—"}</td>
+          <td class="num right">${r.rt ? r.rt.toFixed(0) + " ms" : "—"}</td>
+          <td class="num right">${r.hunks ?? "—"}</td>
+          <td class="num right" style="color:var(--ok)">${r.adds ?? "—"}</td>
+          <td class="num right" style="color:var(--bad)">${r.dels ?? "—"}</td>
+          <td class="small muted">${esc(r.err || noteFor(r.method))}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+    <div class="small muted" style="margin-top:8px">
+      输入规模：A ${n} 行 / B ${b.length} 行 · 修改率 ${(ratio * 100).toFixed(0)}% · 形态 ${esc(mode)}。
+      Myers 编辑距离过大时自动降级 Patience（轨迹内存保护阈值 D>900）；
+      Patience 用唯一行锚点把问题切成小段后分治，是"大文件小修改"场景的最优路径。
+    </div>`;
+};
+
+function noteFor(m) {
+  if (m.startsWith("myers")) return "贪心 O(ND)，轨迹回溯，前后缀裁剪";
+  if (m.startsWith("patience")) return "唯一行锚点 + LIS 分治";
+  return "小输入直接 Myers / 大输入 Patience";
+}
+
+// ------------------------------------------------------------------ 初始化
+initPage("diff.html", "差异对比").then(async () => {
+  await loadRefs();
+  const qp = DFSVS.qs("path");
+  runVerDiff();
+  if (qp) setTimeout(() => showLineDiff(qp,
+    document.getElementById("ver-a").value,
+    document.getElementById("ver-b").value), 300);
+});
+</script>
+</body>
+</html>

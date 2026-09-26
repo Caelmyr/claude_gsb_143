@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>节点状态 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .node-card { border:1px solid var(--border); border-radius:var(--radius); background:var(--panel); padding:14px 16px; }
+  .node-card.dead { border-color:rgba(229,83,75,.5); background:linear-gradient(180deg, rgba(229,83,75,.06), var(--panel)); }
+  .node-card.suspect { border-color:rgba(240,165,56,.5); }
+  .node-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .node-head .nid { font-family:var(--mono); font-weight:700; font-size:15px; }
+  .hb-dot { width:9px; height:9px; border-radius:50%; background:var(--ok); display:inline-block; animation:blink 1.6s infinite; }
+  .hb-dot.off { background:var(--bad); animation:none; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .node-kv { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; font-size:12px; }
+  .node-kv .k { color:var(--muted); }
+  .node-kv .v { font-family:var(--mono); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">节点状态</h1>
+        <div class="sub" id="page-sub">心跳检测 · 副本分布 · 故障演练与自动恢复</div>
+      </div>
+      <div class="spacer"></div>
+      <span class="badge dim plain" id="hb-clock"></span>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <!-- 汇总 -->
+      <div class="grid cols-5" id="sum-row" style="margin-bottom:16px"></div>
+
+      <!-- 节点卡片 -->
+      <div class="grid cols-3" id="node-cards" style="margin-bottom:16px"></div>
+
+      <div class="split-view">
+        <div class="side grow">
+          <!-- 副本分布矩阵 -->
+          <div class="card">
+            <div class="card-title">副本分布矩阵 <span class="hint">块 × 节点（问题块优先展示）· 点击单元格可注入损坏</span>
+              <span class="spacer"></span>
+              <span class="small muted" id="matrix-hint"></span>
+              <button class="btn xs ghost" id="matrix-refresh">⟳</button>
+            </div>
+            <div class="table-wrap scroll-y" style="max-height:420px" id="matrix-box"></div>
+          </div>
+
+          <!-- 健康队列 -->
+          <div class="card">
+            <div class="card-title">恢复队列 <span class="hint">under-replicated / corrupt / missing（调度器每 2s 扫描）</span></div>
+            <div id="queue-box"></div>
+          </div>
+        </div>
+
+        <div class="side fixed" style="width:380px;flex-basis:380px">
+          <!-- 事件流 -->
+          <div class="card">
+            <div class="card-title">集群事件流 <span class="hint">实时</span></div>
+            <div class="event-feed" id="event-feed" style="max-height:560px"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, fmtTs, fmtAgo, fmtDur, toast, confirmDlg, modal,
+        stateBadge } = DFSVS;
+
+let caps = [];
+let nodesData = null;
+let matrixData = null;
+let eventSince = 0;
+const feedItems = [];
+
+// ------------------------------------------------------------------ 汇总 + 节点
+async function loadNodes() {
+  const d = await api("GET", "/api/nodes");
+  nodesData = d;
+  renderSummary(d);
+  renderCards(d);
+}
+
+function renderSummary(d) {
+  const h = d.health;
+  const cells = [
+    { label: "节点", value: `${d.summary.live}/${d.summary.total}`, sub: `DEAD ${d.summary.dead} · SUSPECT ${d.summary.suspect}`, cls: d.summary.dead ? "bad" : "ok" },
+    { label: "欠副本块", value: h.under_replicated, sub: "低于期望副本数", cls: h.under_replicated ? "warn" : "ok" },
+    { label: "损坏副本", value: h.corrupt_replicas, sub: "校验和不匹配", cls: h.corrupt_replicas ? "bad" : "ok" },
+    { label: "丢失块", value: h.missing_blocks, sub: "无任何可用副本", cls: h.missing_blocks ? "bad" : "ok" },
+    { label: "调度中", value: h.scheduled, sub: "已下发复制命令", cls: h.scheduled ? "accent" : "" },
+  ];
+  document.getElementById("sum-row").innerHTML = cells.map(c => `
+    <div class="kpi ${c.cls}">
+      <div class="k-label">${esc(c.label)}</div>
+      <div class="k-value">${esc(String(c.value))}</div>
+      <div class="k-sub">${esc(c.sub)}</div>
+    </div>`).join("");
+}
+
+function renderCards(d) {
+  const canSim = caps.includes("sim");
+  document.getElementById("node-cards").innerHTML = d.nodes.map(n => {
+    const st = n.storage || {};
+    const pct = st.capacity ? (st.used / st.capacity * 100) : 0;
+    const silent = n.last_seen_ago;
+    return `
+    <div class="node-card ${n.state === "DEAD" ? "dead" : n.state === "SUSPECT" ? "suspect" : ""}">
+      <div class="node-head">
+        <span class="hb-dot ${n.state === "LIVE" ? "" : "off"}"></span>
+        <span class="nid">${esc(n.node_id)}</span>
+        ${stateBadge(n.state)}
+        <span class="badge dim plain">${esc(n.rack)}</span>
+        <span class="spacer" style="flex:1"></span>
+        ${canSim ? (n.state === "DEAD"
+          ? `<button class="btn xs ok sim-revive" data-n="${esc(n.node_id)}">▶ 复活</button>`
+          : `<button class="btn xs danger sim-kill" data-n="${esc(n.node_id)}">☠ 杀死</button>`) : ""}
+      </div>
+      <div class="pbar thin ${pct > 85 ? "bad" : pct > 65 ? "warn" : "ok"}" style="margin-bottom:10px">
+        <i style="width:${pct}%"></i></div>
+      <div class="node-kv">
+        <span class="k">容量</span><span class="v">${fmtBytes(st.used)} / ${fmtBytes(st.capacity)}（${pct.toFixed(1)}%）</span>
+        <span class="k">块数</span><span class="v">${n.nn_block_count}（表内） · 损坏 ${n.corrupt}</span>
+        <span class="k">心跳</span><span class="v">${n.state === "DEAD" ? `<span style="color:var(--bad)">失联 ${silent.toFixed(1)}s</span>` : silent.toFixed(1) + "s 前"} · 共 ${n.hb_count} 次</span>
+        <span class="k">IO</span><span class="v">读 ${(n.io.reads || 0)} / 写 ${(n.io.writes || 0)} · ${fmtBytes((n.rates || {}).read || 0)}/s ↗ ${(n.rates || {}).write ? fmtBytes(n.rates.write) : "0"}/s</span>
+        <span class="k">复制</span><span class="v">流入 ${n.io.replicate_in || 0} · 流出 ${n.io.replicate_out || 0} · 巡检 ${n.io.scrubbed || 0}</span>
+        <span class="k">运行</span><span class="v">${fmtDur(n.uptime)} · 死亡 ${n.deaths} 次</span>
+        <span class="k">版本向量</span><span class="v">${esc(JSON.stringify(n.vv || {}))}</span>
+        <span class="k">待执行命令</span><span class="v">${n.pending_commands}</span>
+      </div>
+      <div class="btn-group" style="margin-top:10px">
+        <button class="btn xs blk-list" data-n="${esc(n.node_id)}">🧊 块清单</button>
+        <a class="btn xs ghost" href="${esc(n.url || "#")}/status" target="_blank" rel="noopener">↗ /status</a>
+      </div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll(".sim-kill").forEach(b => b.onclick = () =>
+    confirmDlg(`杀死节点 ${b.dataset.n}？其心跳将停止，约 6 秒后 NameNode 判定 DEAD 并自动启动副本恢复。`,
+      async () => { try { await api("POST", "/api/sim/kill", { node: b.dataset.n }); toast("已杀死 " + b.dataset.n, "warn"); loadNodes(); } catch (e) { toast(e.message, "bad"); } }, true));
+  document.querySelectorAll(".sim-revive").forEach(b => b.onclick = async () => {
+    try { await api("POST", "/api/sim/revive", { node: b.dataset.n }); toast("已复活 " + b.dataset.n, "ok"); loadNodes(); } catch (e) { toast(e.message, "bad"); }
+  });
+  document.querySelectorAll(".blk-list").forEach(b => b.onclick = () => showBlocks(b.dataset.n));
+}
+
+async function showBlocks(node) {
+  const d = await api("GET", `/api/nodes/blocks?node=${encodeURIComponent(node)}&limit=120`);
+  const body = document.createElement("div");
+  body.innerHTML = `
+    <div class="small muted" style="margin-bottom:8px">${esc(node)} 共 ${d.total} 个块（最新 120）</div>
+    <div class="table-wrap scroll-y" style="max-height:52vh">
+    <table class="tbl"><thead><tr><th>块</th><th>genstamp</th><th class="right">大小</th><th>状态</th><th>校验和</th><th>写入时间</th><th></th></tr></thead>
+    <tbody>${d.blocks.map(b => `
+      <tr>
+        <td class="mono small">${esc(b.id.slice(-10))}</td>
+        <td class="num">#${b.genstamp}</td>
+        <td class="num right">${fmtBytes(b.size)}</td>
+        <td>${b.state === "ok" ? '<span class="badge ok plain">ok</span>' : '<span class="badge bad plain">corrupt</span>'}</td>
+        <td class="mono small muted">${esc(b.checksum)}…</td>
+        <td class="small dim">${fmtTs(b.stored_at)}</td>
+        <td>${caps.includes("sim") ? `<button class="btn xs danger cor" data-b="${esc(b.id)}" data-n="${esc(node)}">注入损坏</button>` : ""}</td>
+      </tr>`).join("")}</tbody></table></div>`;
+  modal({ title: `块清单 · ${node}`, body, wide: true, hideCancel: true, okText: "关闭" });
+  body.querySelectorAll(".cor").forEach(btn => btn.onclick = async () => {
+    try {
+      await api("POST", "/api/sim/corrupt", { block_id: btn.dataset.b, node_id: btn.dataset.n });
+      toast(`已对 ${btn.dataset.b.slice(-8)}@${btn.dataset.n} 注入静默损坏，等待巡检/读取发现`, "warn", 5000);
+    } catch (e) { toast(e.message, "bad"); }
+  });
+}
+
+// ------------------------------------------------------------------ 矩阵
+async function loadMatrix() {
+  const d = await api("GET", "/api/nodes/matrix?limit=80");
+  matrixData = d;
+  document.getElementById("matrix-hint").textContent =
+    `共 ${d.total_blocks} 块，展示 ${d.rows.length}`;
+  const box = document.getElementById("matrix-box");
+  box.innerHTML = `
+    <table class="matrix">
+      <thead><tr><th style="text-align:left">块</th><th>大小</th><th>副本</th>
+        ${d.nodes.map(n => `<th>${esc(n)}</th>`).join("")}<th>状态</th><th></th></tr></thead>
+      <tbody>
+        ${d.rows.map((r, ri) => `
+          <tr>
+            <td class="blk mono" title="${esc(r.block)}">${esc(r.short)}</td>
+            <td>${fmtBytes(r.size)}</td>
+            <td>${r.live}/${r.desired}</td>
+            ${d.nodes.map(n => {
+              const c = r.cells[n] || "-";
+              const glyph = c === "ok" ? "●" : c === "corrupt" ? "✕" : c === "stale" ? "◌" : "·";
+              return `<td class="c-${c === "-" ? "none" : c} cell" data-r="${ri}" data-n="${esc(n)}"
+                        style="cursor:${c === "ok" && caps.includes("sim") ? "pointer" : "default"}"
+                        title="${esc(n)}: ${esc(c)}">${glyph}</td>`;
+            }).join("")}
+            <td>${r.status === "ok" ? '<span class="badge ok plain">健康</span>' :
+                  r.status === "under" ? '<span class="badge warn plain">欠副本</span>' :
+                  '<span class="badge bad plain">丢失</span>'}</td>
+            <td><button class="btn xs ghost m-paths" data-b="${esc(r.block)}">引用</button></td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+  box.querySelectorAll(".cell").forEach(td => td.onclick = async () => {
+    if (!caps.includes("sim")) return;
+    const r = matrixData.rows[+td.dataset.r];
+    const node = td.dataset.n;
+    if ((r.cells[node] || "-") !== "ok") return;
+    confirmDlg(`向 ${node} 上的块 ${r.short} 注入静默损坏？\n（数据字节被翻转，校验和不变——等待巡检或读取时发现）`,
+      async () => {
+        try { await api("POST", "/api/sim/corrupt", { block_id: r.block, node_id: node });
+              toast("已注入损坏", "warn"); } catch (e) { toast(e.message, "bad"); }
+      }, true);
+  });
+  box.querySelectorAll(".m-paths").forEach(b => b.onclick = async () => {
+    const d = await api("GET", "/api/nodes/block_paths?block=" + encodeURIComponent(b.dataset.b));
+    modal({ title: "块引用", hideCancel: true, okText: "关闭",
+      body: `<div class="small muted" style="margin-bottom:8px">引用块 <span class="mono">${esc(b.dataset.b)}</span> 的文件：</div>
+             ${d.paths.length ? d.paths.map(p => `<div class="mono small" style="padding:3px 0">🗎 ${esc(p)}</div>`).join("") : '<div class="empty small">无活动文件引用（历史版本引用或待 GC）</div>'}` });
+  });
+}
+document.getElementById("matrix-refresh").onclick = loadMatrix;
+
+// ------------------------------------------------------------------ 恢复队列
+async function loadQueue() {
+  const q = await api("GET", "/api/health/queue");
+  const box = document.getElementById("queue-box");
+  const under = q.under_replicated;
+  const corrupt = Object.entries(q.corrupt);
+  box.innerHTML = `
+    <div class="small" style="margin-bottom:8px">
+      <span class="badge ${under.length ? "warn" : "ok"}">欠副本 ${q.counts.under}</span>
+      <span class="badge ${corrupt.length ? "bad" : "ok"}">损坏 ${q.counts.corrupt}</span>
+      <span class="badge ${q.counts.missing ? "bad" : "ok"}">丢失 ${q.counts.missing}</span>
+      <span class="badge ${q.counts.scheduled ? "acc" : "dim"}">调度中 ${q.counts.scheduled}</span>
+    </div>
+    ${under.length ? `
+    <div class="table-wrap scroll-y" style="max-height:220px">
+    <table class="tbl"><thead><tr><th>块</th><th>副本</th><th class="right">大小</th><th>发现于</th><th>尝试</th><th>调度</th></tr></thead>
+    <tbody>${under.map(u => `
+      <tr>
+        <td class="mono small">${esc(u.block.slice(-10))}</td>
+        <td><span class="badge ${u.live === 0 ? "bad" : u.live < 2 ? "warn" : "dim"} plain">${u.live}/${u.desired}</span></td>
+        <td class="num right">${fmtBytes(u.size)}</td>
+        <td class="small dim">${fmtAgo(u.since)}</td>
+        <td class="num">${u.attempts}</td>
+        <td class="small mono">${u.scheduled ? `${esc(u.scheduled.src)} → ${esc((u.scheduled.dst || []).join(","))}` : '<span class="muted">待调度</span>'}</td>
+      </tr>`).join("")}</tbody></table></div>` : '<div class="empty small">队列清空：所有块副本齐全 🎉</div>'}
+    ${corrupt.length ? `<div class="small" style="margin-top:10px">
+      ${corrupt.map(([k, v]) => `<span class="badge bad plain" title="${esc(v.reason || "")} · ${fmtTs(v.ts)}">${esc(k.slice(-16))}</span>`).join(" ")}</div>` : ""}`;
+}
+
+// ------------------------------------------------------------------ 事件流
+async function loadEvents() {
+  const d = await api("GET", `/api/sim/events?since=${eventSince}&limit=60`);
+  if (!d.events.length) return;
+  for (const e of d.events) {
+    eventSince = Math.max(eventSince, e.seq || 0);
+    feedItems.unshift(e);
+  }
+  while (feedItems.length > 120) feedItems.pop();
+  document.getElementById("event-feed").innerHTML = feedItems.map(e => `
+    <div class="evt ${esc(e.kind)}">
+      <span class="t">${fmtTs(e.ts).slice(3)}</span>
+      <span class="kind">${esc(e.kind)}</span>
+      <span>${esc(e.message)}</span>
+    </div>`).join("");
+}
+
+// ------------------------------------------------------------------ 时钟
+setInterval(() => {
+  document.getElementById("hb-clock").textContent = fmtTs(Date.now() / 1000);
+}, 1000);
+
+initPage("nodes.html", "节点状态").then(async () => {
+  try { const me = await api("GET", "/api/auth/me"); caps = me.caps || []; }
+  catch (e) { caps = []; }
+  const tick = () => Promise.all([loadNodes(), loadQueue()])
+    .catch(e => console.warn(e));
+  await tick();
+  await Promise.all([loadMatrix(), loadEvents()]).catch(() => {});
+  DFSVS.poll(tick, 2500);
+  DFSVS.poll(loadEvents, 2000);
+  DFSVS.poll(loadMatrix, 6000);
+});
+</script>
+</body>
+</html>

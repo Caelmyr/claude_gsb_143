@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>仪表盘 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">仪表盘</h1>
+        <div class="sub" id="page-sub">集群总览 · 存储 / 版本 / 健康一屏掌握</div>
+      </div>
+      <div class="spacer"></div>
+      <a class="btn ghost sm" href="nodes.html">节点详情</a>
+      <a class="btn ghost sm" href="files.html">浏览文件</a>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <!-- KPI 行 -->
+      <div class="grid cols-5" id="kpi-row" style="margin-bottom:16px">
+        <div class="kpi"><div class="k-label">加载中…</div></div>
+      </div>
+
+      <div class="split-view">
+        <div class="side grow">
+          <!-- 容量 -->
+          <div class="card">
+            <div class="card-title">集群容量 <span class="hint">（逻辑大小 × 副本 = 物理占用）</span>
+              <span class="spacer"></span>
+              <a class="small" href="stats.html">更多统计 →</a>
+            </div>
+            <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:center">
+              <div id="cap-donut"></div>
+              <div style="flex:1;min-width:260px" id="node-cap-bars"></div>
+            </div>
+          </div>
+
+          <!-- 最近提交 -->
+          <div class="card">
+            <div class="card-title">最近提交 <span class="hint" id="branch-hint"></span>
+              <span class="spacer"></span>
+              <a class="small" href="versions.html">版本历史 →</a>
+            </div>
+            <div id="recent-commits"></div>
+          </div>
+
+          <!-- 最近日志 -->
+          <div class="card">
+            <div class="card-title">系统日志（最新 8 条）
+              <span class="spacer"></span>
+              <a class="small" href="logs.html">全部日志 →</a>
+            </div>
+            <div class="table-wrap"><table class="tbl">
+              <thead><tr><th>时间</th><th>级别</th><th>来源</th><th>动作</th><th>对象</th></tr></thead>
+              <tbody id="recent-logs"></tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <div class="side fixed">
+          <!-- 健康 -->
+          <div class="card">
+            <div class="card-title">副本健康</div>
+            <div id="health-box"></div>
+          </div>
+
+          <!-- 事件流 -->
+          <div class="card">
+            <div class="card-title">集群事件 <span class="spacer"></span>
+              <a class="small" href="nodes.html">节点页 →</a>
+            </div>
+            <div class="event-feed" id="event-feed" style="max-height:260px"></div>
+          </div>
+
+          <!-- 热度 -->
+          <div class="card">
+            <div class="card-title">热点文件 TOP5 <span class="spacer"></span>
+              <a class="small" href="stats.html">统计页 →</a>
+            </div>
+            <div id="hot-box"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, fmtAgo, fmtTs, toast, svgDonut, legend, PALETTE,
+        stateBadge, sparkline } = DFSVS;
+
+async function loadAll() {
+  const [ov, nodes, commits, logs, events, hot] = await Promise.all([
+    api("GET", "/api/stats/overview"),
+    api("GET", "/api/nodes"),
+    api("GET", "/api/version/commits?limit=6"),
+    api("GET", "/api/logs?limit=8"),
+    api("GET", "/api/sim/events?limit=14"),
+    api("GET", "/api/stats/hotness?limit=5"),
+  ]);
+  renderKpis(ov, nodes);
+  renderCapacity(ov, nodes);
+  renderHealth(ov, nodes);
+  renderCommits(commits);
+  renderLogs(logs);
+  renderEvents(events);
+  renderHot(hot);
+}
+
+function renderKpis(ov, nodes) {
+  const kpis = [
+    { label: "存活节点", value: `${ov.nodes_live}/${ov.nodes_total}`,
+      sub: `DEAD ${ov.nodes_dead} · 机架 ${new Set(nodes.nodes.map(n => n.rack)).size} 个`,
+      cls: ov.nodes_dead ? "bad" : "ok" },
+    { label: "文件 / 目录", value: ov.files,
+      sub: `目录 ${ov.dirs} 个 · 逻辑 ${fmtBytes(ov.logical_bytes)}`, cls: "accent" },
+    { label: "数据块", value: ov.blocks,
+      sub: `物理占用 ${fmtBytes(ov.physical_bytes)}（含副本）`, cls: "" },
+    { label: "版本提交", value: ov.versions.commits,
+      sub: `分支 ${ov.versions.branches} · 合并 ${ov.versions.merge_commits}`, cls: "" },
+    { label: "待处理问题", value: ov.under_replicated + ov.corrupt_replicas + ov.missing_blocks,
+      sub: `欠副本 ${ov.under_replicated} · 损坏 ${ov.corrupt_replicas} · 丢失 ${ov.missing_blocks}`,
+      cls: (ov.under_replicated + ov.corrupt_replicas + ov.missing_blocks) ? "warn" : "ok" },
+  ];
+  document.getElementById("kpi-row").innerHTML = kpis.map(k => `
+    <div class="kpi ${k.cls}">
+      <div class="k-label">${esc(k.label)}</div>
+      <div class="k-value">${esc(String(k.value))}</div>
+      <div class="k-sub">${esc(k.sub)}</div>
+    </div>`).join("");
+}
+
+function renderCapacity(ov, nodes) {
+  const usedPct = ov.capacity ? (ov.used / ov.capacity * 100) : 0;
+  document.getElementById("cap-donut").innerHTML =
+    svgDonut([
+      { label: "已用（物理）", value: ov.used, valueText: fmtBytes(ov.used) },
+      { label: "空闲", value: Math.max(0, ov.free), valueText: fmtBytes(ov.free) },
+    ], 170, 26, usedPct.toFixed(1) + "%", "已用 " + fmtBytes(ov.used)) +
+    legend([
+      { label: "已用", valueText: fmtBytes(ov.used), color: PALETTE[0] },
+      { label: "空闲", valueText: fmtBytes(ov.free), color: "#1c2436" },
+      { label: "回收站", valueText: fmtBytes(ov.trash.bytes), color: PALETTE[2] },
+    ]);
+  document.getElementById("node-cap-bars").innerHTML = nodes.nodes.map(n => {
+    const st = n.storage || {};
+    const pct = st.capacity ? (st.used / st.capacity * 100) : 0;
+    return `
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">
+        <span>${stateBadge(n.state)} <b class="mono">${esc(n.node_id)}</b>
+          <span class="muted small">${esc(n.rack || "")}</span></span>
+        <span class="mono muted">${fmtBytes(st.used)} / ${fmtBytes(st.capacity)}（${pct.toFixed(1)}%）</span>
+      </div>
+      <div class="pbar thin ${pct > 85 ? "bad" : pct > 65 ? "warn" : "ok"}"><i style="width:${pct}%"></i></div>
+    </div>`;
+  }).join("");
+}
+
+function renderHealth(ov, nodes) {
+  const rows = [
+    ["欠副本块", ov.under_replicated, ov.under_replicated ? "warn" : "ok"],
+    ["损坏副本", ov.corrupt_replicas, ov.corrupt_replicas ? "bad" : "ok"],
+    ["丢失块", ov.missing_blocks, ov.missing_blocks ? "bad" : "ok"],
+    ["回收站条目", ov.trash.count, "dim"],
+  ];
+  document.getElementById("health-box").innerHTML = rows.map(([k, v, c]) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-bottom:1px dashed var(--border-soft)">
+      <span class="dim">${esc(k)}</span>
+      <span class="badge ${c === "dim" ? "dim" : v ? c : "ok"}">${v}</span>
+    </div>`).join("") +
+    `<div class="small muted" style="margin-top:10px">
+      副本因子 ${ov.replica_dist ? Object.entries(ov.replica_dist).map(([k, v]) => `${k}×:${v}块`).join(" · ") : "-"}
+      <br>块缓存命中 ${ov.cache.hits} / 未命中 ${ov.cache.misses}
+      <br>NN 运行 ${Math.round(ov.nn_uptime)}s · API ${ov.api_rate} req/s
+    </div>`;
+}
+
+function renderCommits(data) {
+  document.getElementById("branch-hint").textContent = `分支 ${data.branch}`;
+  const box = document.getElementById("recent-commits");
+  if (!data.commits.length) { box.innerHTML = `<div class="empty">暂无提交</div>`; return; }
+  box.innerHTML = data.commits.map(c => `
+    <div style="display:flex;gap:10px;align-items:baseline;padding:7px 2px;border-bottom:1px dashed var(--border-soft)">
+      <span class="chip">${esc(c.short)}</span>
+      <span style="flex:1;min-width:0">
+        ${c.is_merge ? `<span class="badge violet plain">merge</span> ` : ""}
+        ${esc(c.message)}
+        <div class="small muted mono">${esc(c.author)} · ${fmtAgo(c.ts)}
+          ${c.stats ? ` · +${c.stats.added || 0} ~${c.stats.modified || 0} -${c.stats.deleted || 0}` : ""}
+          ${(c.refs || []).map(r => `<span class="badge acc plain">${esc(r)}</span>`).join(" ")}
+        </div>
+      </span>
+    </div>`).join("");
+}
+
+function renderLogs(data) {
+  document.getElementById("recent-logs").innerHTML = data.items.map(l => `
+    <tr class="log-row lv-${esc(l.level)}">
+      <td class="num dim nowrap">${fmtTs(l.ts)}</td>
+      <td class="lv">${esc(l.level)}</td>
+      <td><span class="chip">${esc(l.source)}</span></td>
+      <td>${esc(l.action)}</td>
+      <td class="dim" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.target)}</td>
+    </tr>`).join("");
+}
+
+function renderEvents(data) {
+  const box = document.getElementById("event-feed");
+  if (!data.events.length) { box.innerHTML = `<div class="empty small">暂无事件</div>`; return; }
+  box.innerHTML = data.events.slice().reverse().map(e => `
+    <div class="evt ${esc(e.kind)}">
+      <span class="t">${fmtTs(e.ts).slice(11)}</span>
+      <span class="kind">${esc(e.kind)}</span>
+      <span>${esc(e.message)}</span>
+    </div>`).join("");
+}
+
+function renderHot(data) {
+  const box = document.getElementById("hot-box");
+  if (!data.items.length) { box.innerHTML = `<div class="empty small">暂无访问记录</div>`; return; }
+  box.innerHTML = data.items.map(h => `
+    <div style="padding:6px 2px;border-bottom:1px dashed var(--border-soft)">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" class="mono small">${esc(h.path)}</span>
+        ${sparkline(h.buckets, { w: 64, h: 18 })}
+      </div>
+      <div class="small muted mono">score ${h.score} · ${h.count} 次 · ${fmtBytes(h.bytes)}</div>
+    </div>`).join("");
+}
+
+initPage("index.html", "仪表盘").then(() => {
+  loadAll().catch(e => toast("加载失败: " + e.message, "bad"));
+  DFSVS.poll(() => loadAll(), 8000);
+});
+</script>
+</body>
+</html>

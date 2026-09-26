@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文件浏览 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">文件浏览</h1>
+        <div class="sub" id="page-sub">目录树 · 缩略图 · 块与副本详情</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <div class="split-view">
+        <!-- 左：目录树 -->
+        <div class="side fixed" style="width:270px;flex-basis:270px">
+          <div class="card" style="padding:12px">
+            <div class="card-title">目录树
+              <span class="spacer"></span>
+              <button class="btn xs" id="btn-refresh-tree" title="刷新">⟳</button>
+            </div>
+            <div class="tree scroll-y" id="tree" style="max-height:66vh"></div>
+            <hr class="hr">
+            <div class="small muted" id="trash-hint"></div>
+            <a class="btn sm ghost" href="recycle.html" style="margin-top:8px">🗑 打开回收站</a>
+          </div>
+        </div>
+
+        <!-- 右：文件网格 -->
+        <div class="side grow">
+          <div class="toolbar">
+            <div class="breadcrumb" id="breadcrumb"></div>
+            <div class="spacer"></div>
+            <button class="btn sm" id="btn-mkdir">＋ 新建目录</button>
+            <a class="btn sm" id="btn-upload" href="transfer.html">⇧ 上传文件</a>
+            <button class="btn sm ghost" id="btn-refresh">⟳</button>
+          </div>
+
+          <div class="card" style="padding:14px">
+            <div class="file-grid" id="file-grid"></div>
+          </div>
+
+          <!-- 详情抽屉 -->
+          <div class="card" id="detail-card" style="display:none">
+            <div class="card-title"><span id="detail-title">详情</span>
+              <span class="spacer"></span>
+              <button class="btn xs ghost" id="detail-close">✕ 关闭</button>
+            </div>
+            <div id="detail-body"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, fmtTs, fmtAgo, toast, modal, confirmDlg, promptDlg,
+        fileIcon, thumbUrl, healthBadge, getToken } = DFSVS;
+
+let currentPath = DFSVS.qs("path", "/");
+let selected = null;      // 当前选中条目
+let expanded = new Set(["/"]);
+
+// ------------------------------------------------------------------ 目录树
+async function loadTree() {
+  const data = await api("GET", "/api/fs/tree");
+  const box = document.getElementById("tree");
+  box.innerHTML = "";
+  box.appendChild(buildTreeNode(data.tree, "/"));
+  document.getElementById("trash-hint").textContent =
+    `回收站：${data.trash.count} 项 / ${fmtBytes(data.trash.bytes)}（保留 ${data.trash.retention_days} 天）`;
+}
+
+function buildTreeNode(node, path) {
+  const wrap = document.createElement("div");
+  const row = document.createElement("div");
+  row.className = "t-node" + (path === currentPath ? " sel" : "");
+  const isDir = node.type === "dir";
+  const isOpen = expanded.has(path);
+  row.innerHTML = `
+    <span class="tw">${isDir ? (isOpen ? "▾" : "▸") : ""}</span>
+    <span>${isDir ? (isOpen ? "🗂" : "🗀") : fileIcon(node)}</span>
+    <span class="tn">${esc(node.name)}</span>
+    <span class="ts">${isDir ? (node.file_count ?? "") : fmtBytes(node.size)}</span>`;
+  row.onclick = (e) => {
+    e.stopPropagation();
+    if (isDir) {
+      if (expanded.has(path)) expanded.delete(path); else expanded.add(path);
+      currentPath = path;
+      refresh();
+    } else {
+      currentPath = path.split("/").slice(0, -1).join("/") || "/";
+      selectEntry({ ...node, path, type: "file" });
+      refresh();
+    }
+  };
+  wrap.appendChild(row);
+  if (isDir && isOpen && node.children) {
+    const kids = document.createElement("div");
+    kids.className = "t-kids";
+    for (const c of node.children) {
+      const cpath = path === "/" ? "/" + c.name : path + "/" + c.name;
+      kids.appendChild(buildTreeNode(c, cpath));
+    }
+    wrap.appendChild(kids);
+  }
+  return wrap;
+}
+
+// ------------------------------------------------------------------ 列表
+async function loadList() {
+  const data = await api("GET", "/api/fs/list?path=" + encodeURIComponent(currentPath));
+  renderBreadcrumb(data);
+  renderGrid(data.items);
+  return data;
+}
+
+function renderBreadcrumb(data) {
+  const box = document.getElementById("breadcrumb");
+  let html = `<span class="seg" data-p="/">🏠 /</span>`;
+  let acc = "";
+  for (const seg of data.breadcrumb) {
+    acc += "/" + seg;
+    html += `<span class="sep">›</span><span class="seg" data-p="${esc(acc)}">${esc(seg)}</span>`;
+  }
+  box.innerHTML = html;
+  box.querySelectorAll(".seg").forEach(el =>
+    el.onclick = () => { currentPath = el.dataset.p; expanded.add(currentPath); refresh(); });
+}
+
+function renderGrid(items) {
+  const grid = document.getElementById("file-grid");
+  if (!items.length) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <div class="big">🗀</div>此目录为空<br>
+      <span class="small">点击右上角「上传文件」或「新建目录」</span></div>`;
+    return;
+  }
+  grid.innerHTML = items.map((it, i) => `
+    <div class="fcard ${selected && selected.path === it.path ? "sel" : ""}" data-i="${i}">
+      ${it.type === "file" ? `<span class="health-dot ${it.health || "ok"}" title="副本健康: ${it.health || "ok"}"></span>` : ""}
+      <div class="thumb">
+        ${it.thumb ? `<img loading="lazy" src="${esc(thumbUrl(it.path))}" alt="" onerror="this.parentElement.textContent='🖼'">` : fileIcon(it)}
+      </div>
+      <div class="fname">${esc(it.name)}</div>
+      <div class="fmeta">${it.type === "dir" ? (it.children + " 项") : fmtBytes(it.size)} · ${fmtAgo(it.modified_at)}</div>
+    </div>`).join("");
+  grid.querySelectorAll(".fcard").forEach(el => {
+    const it = items[+el.dataset.i];
+    el.onclick = () => {
+      if (it.type === "dir") {
+        currentPath = it.path;
+        expanded.add(currentPath);
+        selected = null;
+        refresh();
+      } else {
+        selectEntry(it);
+      }
+    };
+    el.ondblclick = () => {
+      if (it.type === "file") previewFile(it);
+    };
+  });
+}
+
+// ------------------------------------------------------------------ 详情
+async function selectEntry(it) {
+  selected = it;
+  document.querySelectorAll(".fcard").forEach(el => el.classList.remove("sel"));
+  const card = document.getElementById("detail-card");
+  card.style.display = "";
+  document.getElementById("detail-title").innerHTML =
+    `${fileIcon(it)} ${esc(it.path || it.name)} <span class="muted small">详情</span>`;
+  const body = document.getElementById("detail-body");
+  body.innerHTML = `<div class="empty small">加载中 …</div>`;
+  try {
+    const [st, blocks] = await Promise.all([
+      api("GET", "/api/fs/stat?path=" + encodeURIComponent(it.path)),
+      api("GET", "/api/file/blocks?path=" + encodeURIComponent(it.path)),
+    ]);
+    const s = st.stat;
+    body.innerHTML = `
+      <div class="split-view">
+        <div class="side grow">
+          <div class="kv">
+            <span class="k">路径</span><span class="v">${esc(s.path)}</span>
+            <span class="k">类型</span><span class="v">${s.type === "dir" ? "目录" : esc(s.mime || "文件")}</span>
+            <span class="k">大小</span><span class="v">${fmtBytes(s.size)}（${s.size} B）</span>
+            <span class="k">内容哈希</span><span class="v">${esc((s.content_hash || "-").slice(0, 24))}…</span>
+            <span class="k">属主 / 模式</span><span class="v">${esc(s.owner)} · ${esc(s.mode)}</span>
+            <span class="k">创建 / 修改</span><span class="v">${fmtTs(s.created_at)} · ${fmtTs(s.modified_at)}</span>
+            <span class="k">覆盖版本</span><span class="v">v${s.file_version}</span>
+            <span class="k">访问</span><span class="v">${s.access_count} 次 · 最近 ${fmtAgo(s.last_access)}</span>
+          </div>
+          <div class="btn-group" style="margin-top:14px">
+            <button class="btn sm primary" id="d-preview">👁 预览</button>
+            <button class="btn sm" id="d-download">⇩ 下载</button>
+            <button class="btn sm" id="d-rename">✎ 重命名</button>
+            <button class="btn sm" id="d-history">⑂ 版本历史</button>
+            <button class="btn sm danger" id="d-delete">🗑 删除</button>
+          </div>
+        </div>
+        <div class="side grow">
+          <div class="small muted" style="margin-bottom:6px">
+            块与副本（${blocks.blocks.length} 块 · 逻辑 ${fmtBytes(blocks.size)}）</div>
+          <div class="table-wrap scroll-y" style="max-height:300px">
+          <table class="tbl">
+            <thead><tr><th>块</th><th class="right">大小</th><th>genstamp</th><th>健康</th><th>副本（节点:状态）</th></tr></thead>
+            <tbody>
+              ${blocks.blocks.map(b => b.missing ? `
+                <tr><td class="mono">${esc(b.id.slice(-8))}</td><td colspan="4"><span class="badge bad">块丢失</span></td></tr>` : `
+                <tr>
+                  <td class="mono" title="${esc(b.id)}\nsha256 ${esc(b.checksum)}…">${esc(b.short)}</td>
+                  <td class="num right">${fmtBytes(b.size)}</td>
+                  <td class="num">#${b.genstamp}</td>
+                  <td>${healthBadge(b.status)} <span class="mono small">${b.live}/${b.desired}</span></td>
+                  <td>${b.replicas.map(r => `
+                    <span class="badge plain ${r.state === "ok" && r.live ? "ok" : r.state === "corrupt" ? "bad" : "warn"}"
+                          title="genstamp #${r.genstamp} · ${r.rack || ""}">${esc(r.node)}${r.state !== "ok" ? ":" + esc(r.state) : ""}</span>`).join(" ") || '<span class="muted">无</span>'}</td>
+                </tr>`).join("")}
+            </tbody>
+          </table></div>
+        </div>
+      </div>`;
+    document.getElementById("d-preview").onclick = () => previewFile(s);
+    document.getElementById("d-download").onclick = () =>
+      location.href = DFSVS.downloadUrl(s.path);
+    document.getElementById("d-rename").onclick = () => renameEntry(s);
+    document.getElementById("d-delete").onclick = () => deleteEntry(s);
+    document.getElementById("d-history").onclick = () =>
+      location.href = "versions.html?path=" + encodeURIComponent(s.path);
+  } catch (e) {
+    body.innerHTML = `<div class="empty small">加载详情失败：${esc(e.message)}</div>`;
+  }
+}
+
+async function previewFile(it) {
+  try {
+    const p = await api("GET", "/api/file/preview?path=" + encodeURIComponent(it.path));
+    const m = modal({
+      title: `预览 · ${it.path}`, wide: true, hideCancel: true, okText: "关闭",
+      body: p.is_text
+        ? `<div class="small muted" style="margin-bottom:8px">
+             ${esc(p.mime)} · ${fmtBytes(p.size)}${p.truncated ? "（已截断）" : ""} ·
+             读自节点 ${(p.nodes || []).join(",") || "缓存"}</div>
+           <div class="pre-wrap" style="max-height:60vh">${esc(p.content || "")}</div>`
+        : `<div class="empty">
+             <div class="big">${fileIcon(it)}</div>
+             二进制文件（${esc(p.mime)}，${fmtBytes(p.size)}），不支持文本预览。<br><br>
+             <a class="btn primary sm" href="${esc(DFSVS.downloadUrl(it.path))}">⇩ 下载文件</a>
+           </div>`,
+    });
+  } catch (e) { toast("预览失败：" + e.message, "bad"); }
+}
+
+// ------------------------------------------------------------------ 操作
+function renameEntry(it) {
+  promptDlg("重命名", [{ name: "name", label: "新名称", value: it.name }],
+    async (v) => {
+      try {
+        const r = await api("POST", "/api/fs/rename", { path: it.path, new_name: v.name });
+        toast(`已重命名为 ${r.new_path}`, "ok");
+        refresh();
+      } catch (e) { toast("重命名失败：" + e.message, "bad"); }
+    });
+}
+
+function deleteEntry(it) {
+  confirmDlg(`把 ${it.path} 移入回收站？（可在回收站页面恢复）`, async () => {
+    try {
+      await api("POST", "/api/fs/delete", { path: it.path });
+      toast("已移入回收站", "ok");
+      selected = null;
+      document.getElementById("detail-card").style.display = "none";
+      refresh();
+    } catch (e) { toast("删除失败：" + e.message, "bad"); }
+  }, true);
+}
+
+document.getElementById("btn-mkdir").onclick = () => {
+  promptDlg("新建目录", [
+    { name: "name", label: `在 ${currentPath} 下创建目录`, placeholder: "例如 project-x" },
+  ], async (v) => {
+    if (!v.name.trim()) return;
+    try {
+      await api("POST", "/api/fs/mkdir", { path: currentPath, name: v.name.trim() });
+      toast("目录已创建", "ok");
+      refresh();
+    } catch (e) { toast("创建失败：" + e.message, "bad"); }
+  });
+};
+
+// ------------------------------------------------------------------ 刷新
+async function refresh() {
+  try {
+    await Promise.all([loadTree(), loadList()]);
+    history.replaceState(null, "", "?path=" + encodeURIComponent(currentPath));
+  } catch (e) { toast("加载失败：" + e.message, "bad"); }
+}
+
+document.getElementById("btn-refresh").onclick = refresh;
+document.getElementById("btn-refresh-tree").onclick = refresh;
+document.getElementById("detail-close").onclick = () => {
+  document.getElementById("detail-card").style.display = "none";
+  selected = null;
+};
+
+initPage("files.html", "文件浏览").then(refresh);
+</script>
+</body>
+</html>

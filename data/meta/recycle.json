@@ -1,0 +1,11 @@
+{
+ "doc": "recycle",
+ "vv": {
+  "namenode": 4
+ },
+ "updated_at": 1790409364.6117103,
+ "data": {
+  "items": {},
+  "retention_days": 7
+ }
+}
