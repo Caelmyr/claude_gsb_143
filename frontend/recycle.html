@@ -37,7 +37,7 @@
         <div class="table-wrap"><table class="tbl">
           <thead><tr>
             <th>名称</th><th>类型</th><th>原路径</th><th class="right">大小</th>
-            <th>删除者</th><th>删除时间</th><th>剩余保留期</th><th>操作</th>
+            <th>删除来源</th><th>删除时间</th><th>剩余保留期</th><th>操作</th>
           </tr></thead>
           <tbody id="item-body"></tbody>
         </table></div>
@@ -109,7 +109,13 @@ function renderItems(items) {
       <div class="big">🗑</div>回收站是空的</td></tr>`;
     return;
   }
-  body.innerHTML = items.map(it => `
+  body.innerHTML = items.map(it => {
+    const byRule = !!it.rule_id;
+    const src = byRule
+      ? `<span class="badge warn plain" title="由生命周期规则自动移入">❄ ${esc(it.rule_name)}</span>
+         <div class="small muted">${esc(it.deleted_by || "system")}${it.tier_at_delete === "archived" ? ' · <span title="恢复后访问自动取回">归档中移入</span>' : ""}</div>`
+      : `<span class="small">${esc(it.deleted_by || "-")}</span>`;
+    return `
     <tr>
       <td>
         <span class="item-name">${it.type === "dir" ? "🗀" : "🗎"} ${esc(it.name)}</span>
@@ -118,14 +124,15 @@ function renderItems(items) {
       <td>${it.type === "dir" ? '<span class="badge acc plain">目录</span>' : '<span class="badge dim plain">文件</span>'}</td>
       <td class="orig-path">${esc(it.original_path)}</td>
       <td class="num right">${fmtBytes(it.size)}</td>
-      <td class="small">${esc(it.deleted_by || "-")}</td>
+      <td>${src}</td>
       <td class="small dim nowrap" title="${fmtTs(it.deleted_at)}">${fmtAgo(it.deleted_at)}</td>
       <td>${countdownHtml(it)}</td>
       <td class="nowrap">
         <button class="btn xs ok it-restore" data-id="${esc(it.id)}" data-n="${esc(it.name)}">↩ 恢复</button>
         <button class="btn xs danger it-purge" data-id="${esc(it.id)}" data-n="${esc(it.name)}">彻底删除</button>
       </td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   body.querySelectorAll(".it-restore").forEach(b => b.onclick = async () => {
     try {
       const r = await api("POST", "/api/recycle/restore", { id: b.dataset.id });

@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>生命周期 · DFSVS</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .rule-path { font-family: var(--mono); font-size: 12.5px; color: var(--accent); }
+  .grace-pill { font-family: var(--mono); font-size: 12px; padding: 2px 8px;
+    border-radius: 10px; background: var(--warn-soft); color: var(--warn);
+    border: 1px solid rgba(240,165,53,.35); white-space: nowrap; }
+  .grace-pill.urgent { background: var(--bad-soft); color: var(--bad);
+    border-color: rgba(229,83,75,.4); }
+  .act-archive { color: var(--info); }
+  .act-trash { color: var(--warn); }
+  .shadow-note { color: var(--muted); font-size: 11.5px; }
+  .rule-off td { opacity: .55; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tab { padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel); cursor: pointer; font-size: 13px; user-select: none; }
+  .tab.active { border-color: var(--accent); background: var(--accent-soft);
+    color: var(--accent); font-weight: 600; }
+  .filter-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .filter-bar input, .filter-bar select { width: auto; padding: 4px 8px; }
+  .lc-explain { line-height: 1.9; }
+  .lc-explain b { color: var(--text); }
+  .st-archived, .st-restored, .st-trashed, .st-canceled, .st-skipped { font-weight: 600; }
+  .st-archived { color: var(--info); }
+  .st-restored { color: var(--ok); }
+  .st-trashed { color: var(--warn); }
+  .st-canceled { color: var(--muted); }
+  .cold-badge { font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside id="sidebar" class="sidebar"></aside>
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">生命周期</h1>
+        <div class="sub" id="page-sub">自动归档冷数据 · 自动移入回收站 · 触发前撤销 · 透明取回 · 规则留痕</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn sm" id="btn-scan" title="立即执行一轮评估">⚡ 立即扫描</button>
+      <button class="btn sm primary" id="btn-add">＋ 新增规则</button>
+      <div class="userchip" id="userchip"></div>
+    </header>
+
+    <section class="content">
+      <div id="no-perm" class="card" style="display:none">
+        <div class="empty"><div class="big">🔒</div>需要 admin 角色才能管理生命周期规则（可只读查看）</div>
+      </div>
+
+      <!-- KPI -->
+      <div class="grid cols-5" style="margin-bottom:16px" id="sum-row"></div>
+
+      <div class="tabs">
+        <div class="tab active" data-tab="pending">⏳ 即将触发 / 撤销</div>
+        <div class="tab" data-tab="preview">🔎 规则预览（覆盖关系）</div>
+        <div class="tab" data-tab="rules">📋 规则管理</div>
+        <div class="tab" data-tab="history">🧾 执行历史（有据可查）</div>
+        <div class="tab" data-tab="explain">ℹ 优先级与冷数据说明</div>
+      </div>
+
+      <!-- 即将触发 -->
+      <div class="card pane" id="pane-pending">
+        <div class="card-title">待触发动作
+          <span class="hint">条件已满足，处于撤销宽限期（<b id="grace-hint">--</b>）；到期自动执行，期间可一键撤销</span>
+          <span class="spacer"></span>
+          <button class="btn xs ghost btn-reload">⟳</button>
+        </div>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr>
+            <th>文件</th><th>动作</th><th>生效规则</th><th class="right">大小</th>
+            <th>计时</th><th>宽限截止</th><th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody id="pending-body"></tbody>
+        </table></div>
+      </div>
+
+      <!-- 预览 -->
+      <div class="card pane" id="pane-preview" style="display:none">
+        <div class="card-title">规则预览
+          <span class="hint">模拟当前所有规则对每个文件的命中结果；年龄达到阈值即会在宽限后触发</span>
+          <span class="spacer"></span>
+          <button class="btn xs ghost btn-reload">⟳</button>
+        </div>
+        <div class="filter-bar">
+          <label class="fl" style="flex-direction:row;align-items:center;gap:6px">
+            路径过滤 <input type="text" id="pv-path" placeholder="/data" style="width:180px"></label>
+          <label class="fl" style="flex-direction:row;align-items:center;gap:6px">
+            动作
+            <select id="pv-action"><option value="">全部</option>
+              <option value="archive">归档冷数据</option>
+              <option value="trash">移入回收站</option></select></label>
+          <label class="fl" style="flex-direction:row;align-items:center;gap:6px">
+            <select id="pv-state">
+              <option value="due">仅已到期</option>
+              <option value="all">全部命中</option>
+              <option value="notdue">仅未到期</option>
+              <option value="shadow">有被覆盖规则</option>
+            </select></label>
+          <button class="btn xs primary" id="pv-run">应用</button>
+          <span class="small muted" id="pv-count"></span>
+        </div>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr>
+            <th>文件</th><th>动作</th><th>生效规则（优先级）</th>
+            <th>计时基准</th><th>年龄 / 阈值</th><th>当前层</th>
+            <th>结论</th><th>覆盖的低优先规则</th>
+          </tr></thead>
+          <tbody id="preview-body"></tbody>
+        </table></div>
+      </div>
+
+      <!-- 规则管理 -->
+      <div class="card pane" id="pane-rules" style="display:none">
+        <div class="card-title">生命周期规则
+          <span class="hint">按 优先级↓ · 路径长度↓ 排序；同动作首条命中生效，其余被覆盖</span>
+          <span class="spacer"></span>
+          <button class="btn xs ghost btn-reload">⟳</button>
+        </div>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr>
+            <th>优先级</th><th>规则名</th><th>路径</th><th>匹配</th><th>动作</th>
+            <th>条件</th><th>计时基准</th><th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody id="rules-body"></tbody>
+        </table></div>
+      </div>
+
+      <!-- 历史 -->
+      <div class="card pane" id="pane-history" style="display:none">
+        <div class="card-title">执行历史
+          <span class="hint">某文件被哪条规则动过：归档 / 透明取回 / 移入回收站 / 撤销 全部留痕</span>
+          <span class="spacer"></span>
+          <button class="btn xs ghost btn-reload">⟳</button>
+        </div>
+        <div class="filter-bar">
+          <label class="fl" style="flex-direction:row;align-items:center;gap:6px">
+            文件路径 <input type="text" id="h-path" placeholder="/data/users.json" style="width:200px"></label>
+          <select id="h-action"><option value="">全部动作</option>
+            <option value="archive">归档</option><option value="trash">回收站</option></select>
+          <select id="h-status"><option value="">全部状态</option>
+            <option value="archived">已归档</option><option value="restored">已取回</option>
+            <option value="trashed">已移回收站</option><option value="canceled">已撤销</option>
+            <option value="skipped">跳过</option><option value="failed">失败</option></select>
+          <button class="btn xs primary" id="h-run">查询</button>
+        </div>
+        <div class="table-wrap"><table class="tbl">
+          <thead><tr>
+            <th>时间</th><th>文件</th><th>动作</th><th>状态</th>
+            <th>来源规则</th><th>执行者</th><th>详情</th>
+          </tr></thead>
+          <tbody id="history-body"></tbody>
+        </table></div>
+      </div>
+
+      <!-- 说明 -->
+      <div class="card pane" id="pane-explain" style="display:none">
+        <div class="card-title">规则优先级、覆盖关系与冷数据机制</div>
+        <div class="small lc-explain">
+          <p><b>1. 规则构成</b>：每条规则 = 路径范围（前缀匹配 / 精确匹配）+ 动作（归档冷数据 / 移入回收站）
+            + 触发条件（超过 N 个时间单位没有「最近访问 atime / 最近修改 mtime / 创建 ctime」）+ 优先级。</p>
+          <p><b>2. 优先级与覆盖</b>：同一文件可能被多条规则命中。
+            归档与回收站是两个<b>独立</b>的动作，分别裁决；每个动作内部按
+            <span class="mono">优先级数值 ↓ → 路径前缀长度 ↓ → 创建时间 ↑</span> 排序，
+            <b>第一条生效，其余标记为「被覆盖」</b>。例如 <span class="mono">/data 30 天归档(p120)</span>
+            会覆盖 <span class="mono">/ 60 天归档(p50)</span>——预览页直接展示覆盖链，不会悄悄漏过。</p>
+          <p><b>3. 触发前撤销（两阶段执行）</b>：文件首次满足条件时不会立刻执行，而是进入
+            <b>撤销宽限期（<span id="grace-hint-2">--</span>）</b>，出现在「即将触发」页并倒计时。
+            宽限期内可一键撤销：在文件被重新访问/修改、或规则被修改之前，系统不会再次自动触发；
+            规则停用/删除、文件被访问或移动导致条件不再成立时，待触发动作会<b>自动撤销并留痕</b>。</p>
+          <p><b>4. 归档与透明取回</b>：归档时文件独占的块从 DataNode 热副本下沉到 NameNode 的
+            <b>冷归档库</b>（写入后复核 sha256，<b>内容不丢</b>），块表标记
+            <span class="mono">tier=cold</span> 且不再参与热副本恢复队列；
+            被多个文件共享的去重块若仍有热引用，则保留热副本。任何下载 / 预览 / 缩略图 /
+            历史版本读取都会<b>自动取回</b>：冷库校验 → 重新按副本数流水线复制回 DataNode →
+            块层回到 hot → 删除冷库副本。调用方完全无感知，响应头
+            <span class="mono">X-Restored-Blocks / X-From-Cold</span> 会标注本次取回的块数。</p>
+          <p><b>5. 自动回收站</b>：到期文件走与手动删除完全相同的删除保护路径进入回收站，
+            回收站条目记录来源规则；可在回收站页恢复（恢复后仍是归档层，访问时同样自动取回）。</p>
+          <p><b>6. 有据可查</b>：每次归档 / 取回 / 移入回收站 / 撤销都写入执行历史与系统审计日志，
+            可按文件路径反查「它被哪条规则动过」；文件详情抽屉中也有同样的生命周期视图。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="js/app.js"></script>
+<script>
+"use strict";
+const { api, esc, fmtBytes, fmtTs, fmtAgo, fmtAge, toast, confirmDlg, modal,
+        tierBadge, getToken } = DFSVS;
+
+let rulesData = [];
+let meta = { grace_seconds: 120 };
+let isAdmin = false;
+
+const ACTION_LABEL = { archive: "归档冷数据", trash: "移入回收站" };
+const BASE_LABEL = { atime: "最近访问", mtime: "最近修改", ctime: "创建时间" };
+const UNIT_LABEL = { seconds: "秒", minutes: "分钟", hours: "小时", days: "天" };
+
+// ------------------------------------------------------------------ KPI
+async function loadStats() {
+  try {
+    const d = await api("GET", "/api/lifecycle/rules");
+    rulesData = d.rules;
+    meta.grace_seconds = d.grace_seconds;
+    const s = d.stats;
+    const cells = [
+      { label: "生效规则", value: `${s.enabled_rules}/${s.rules}`, sub: "启用 / 总数", cls: "" },
+      { label: "宽限期待触发", value: s.pending, sub: `${s.due_now} 个已到执行时刻`, cls: s.pending ? "warn" : "ok" },
+      { label: "冷归档文件", value: s.archived_files, sub: `冷库 ${s.cold_blocks} 块`, cls: "accent" },
+      { label: "历史留痕", value: s.history_total, sub: "归档/取回/回收/撤销", cls: "" },
+      { label: "撤销宽限期", value: fmtAge(d.grace_seconds), sub: `扫描周期 ${fmtAge(meta.scan_interval || 20)}`, cls: "" },
+    ];
+    document.getElementById("sum-row").innerHTML = cells.map(c => `
+      <div class="kpi ${c.cls}">
+        <div class="k-label">${esc(c.label)}</div>
+        <div class="k-value" style="font-size:20px">${esc(String(c.value))}</div>
+        <div class="k-sub">${esc(c.sub)}</div>
+      </div>`).join("");
+    const gh = fmtAge(d.grace_seconds);
+    document.getElementById("grace-hint").textContent = gh;
+    document.getElementById("grace-hint-2").textContent = gh;
+  } catch (e) { toast("加载失败：" + e.message, "bad"); }
+}
+
+// ------------------------------------------------------------------ 待触发
+async function loadPending() {
+  const d = await api("GET", "/api/lifecycle/pending");
+  const body = document.getElementById("pending-body");
+  if (!d.items.length) {
+    body.innerHTML = `<tr><td colspan="8" class="empty">
+      <div class="big">✅</div>当前没有待触发动作（规则未命中，或已全部执行/撤销）</td></tr>`;
+    return;
+  }
+  body.innerHTML = d.items.map(p => {
+    const urgent = p.grace_left < 30;
+    const refTs = p.reference_ts ? fmtTs(p.reference_ts) : "-";
+    return `
+    <tr>
+      <td>
+        <div style="font-weight:600">${esc(p.name)}</div>
+        <div class="rule-path">${esc(p.path)}</div>
+      </td>
+      <td class="act-${p.action}"><b>${esc(ACTION_LABEL[p.action] || p.action)}</b></td>
+      <td><span class="badge acc plain">${esc(p.rule_name)}</span></td>
+      <td class="num right">${fmtBytes(p.size)}</td>
+      <td class="small dim">${esc(BASE_LABEL[p.age_base] || p.age_base)}<br>${refTs}</td>
+      <td class="small">${fmtTs(p.due_at)}<br><span class="grace-pill ${urgent ? "urgent" : ""}" data-left="${p.grace_left}">
+          ⏳ ${fmtAge(p.grace_left)} 后执行</span></td>
+      <td>${p.grace_left <= 0 ? '<span class="badge bad plain">即将执行</span>'
+                              : '<span class="badge warn plain">宽限中</span>'}</td>
+      <td class="nowrap">
+        <button class="btn xs warn p-cancel" data-id="${esc(p.id)}"
+                ${isAdmin ? "" : "disabled"}>↩ 撤销</button>
+      </td>
+    </tr>`;
+  }).join("");
+  body.querySelectorAll(".p-cancel").forEach(b => b.onclick = () =>
+    confirmDlg(`撤销该待触发动作？\n撤销后，在文件被重新访问/修改或规则变更前，不会再次自动触发。`,
+      async () => {
+        try {
+          await api("POST", "/api/lifecycle/pending/" + encodeURIComponent(b.dataset.id) + "/cancel",
+                    { note: "用户在页面手动撤销" });
+          toast("已撤销（宽限期内，不会立刻再触发）", "ok");
+          refreshAll();
+        } catch (e) { toast("撤销失败：" + e.message, "bad"); }
+      }));
+}
+
+// ------------------------------------------------------------------ 预览
+async function loadPreview() {
+  const scopePath = document.getElementById("pv-path").value.trim();
+  const action = document.getElementById("pv-action").value;
+  const state = document.getElementById("pv-state").value;
+  const q = scopePath ? "?path=" + encodeURIComponent(scopePath) : "";
+  const d = await api("GET", "/api/lifecycle/preview" + q);
+  let items = d.items;
+  if (action) items = items.filter(x => x.action === action);
+  if (state === "due") items = items.filter(x => x.due);
+  if (state === "notdue") items = items.filter(x => !x.due);
+  if (state === "shadow") items = items.filter(x => x.shadowed.length);
+  document.getElementById("pv-count").textContent =
+    `${items.length} 行（命中 ${d.total}，已到期 ${d.due_count}，宽限中 ${d.in_grace_count}）`;
+  const body = document.getElementById("preview-body");
+  if (!items.length) {
+    body.innerHTML = `<tr><td colspan="8" class="empty small">无匹配项</td></tr>`;
+    return;
+  }
+  body.innerHTML = items.map(x => {
+    let conclusion;
+    if (x.exempted) conclusion = '<span class="badge dim plain">已撤销豁免</span>';
+    else if (x.pending_id) conclusion = '<span class="badge warn plain">宽限中</span>';
+    else if (x.due) conclusion = '<span class="badge bad plain">已到期·下次扫描触发</span>';
+    else conclusion = '<span class="badge ok plain">未到期</span>';
+    const pct = Math.min(100, (x.age_seconds / x.threshold_seconds) * 100);
+    return `
+    <tr>
+      <td><div style="font-weight:600">${esc(x.name)}</div>
+          <div class="rule-path">${esc(x.path)}</div></td>
+      <td class="act-${x.action}">${esc(ACTION_LABEL[x.action])}</td>
+      <td><span class="badge acc plain">${esc(x.rule_name)}</span>
+          <span class="mono small dim">#${x.priority}</span></td>
+      <td class="small">${esc(x.age_base_label)}</td>
+      <td style="min-width:150px">
+        <div class="small mono">${fmtAge(x.age_seconds)} / ${fmtAge(x.threshold_seconds)}
+          ${x.due ? "· 已超期" : ""}</div>
+        <div class="pbar thin ${x.due ? "bad" : pct > 70 ? "warn" : "ok"}"
+             style="width:130px;margin-top:3px"><i style="width:${pct.toFixed(1)}%"></i></div>
+      </td>
+      <td>${tierBadge(x.tier) || '<span class="badge dim plain">热</span>'}</td>
+      <td>${conclusion}</td>
+      <td class="small">${x.shadowed.length
+          ? x.shadowed.map(s => `<div class="shadow-note" title="被更高优先级规则覆盖">
+              ⊖ ${esc(s.rule_name)} <span class="mono">#${s.priority}</span></div>`).join("")
+          : '<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ------------------------------------------------------------------ 规则
+function renderRules() {
+  const body = document.getElementById("rules-body");
+  if (!rulesData.length) {
+    body.innerHTML = `<tr><td colspan="9" class="empty small">暂无规则</td></tr>`;
+    return;
+  }
+  body.innerHTML = rulesData.map(r => `
+    <tr class="${r.enabled ? "" : "rule-off"}">
+      <td class="num"><b>${r.priority}</b></td>
+      <td>${esc(r.name)}<div class="small muted">${esc(r.note || "")}</div></td>
+      <td class="rule-path">${esc(r.path)}${r.path === "/" ? ' <span class="muted">(全局)</span>' : ""}</td>
+      <td>${r.match === "exact" ? "精确" : "前缀"}</td>
+      <td class="act-${r.action}">${esc(ACTION_LABEL[r.action])}</td>
+      <td class="num">${r.age_amount} ${UNIT_LABEL[r.age_unit]}</td>
+      <td class="small">${esc(BASE_LABEL[r.age_base])}</td>
+      <td>${r.enabled ? '<span class="badge ok plain">启用</span>'
+                      : '<span class="badge dim plain">停用</span>'}</td>
+      <td class="nowrap">
+        <button class="btn xs r-edit" data-id="${esc(r.id)}" ${isAdmin ? "" : "disabled"}>✎</button>
+        <button class="btn xs ghost r-toggle" data-id="${esc(r.id)}" data-en="${r.enabled ? 0 : 1}"
+                ${isAdmin ? "" : "disabled"}>${r.enabled ? "停用" : "启用"}</button>
+        <button class="btn xs danger r-del" data-id="${esc(r.id)}"
+                ${isAdmin ? "" : "disabled"}>删除</button>
+      </td>
+    </tr>`).join("");
+  body.querySelectorAll(".r-edit").forEach(b => b.onclick = () =>
+    ruleDialog(rulesData.find(r => r.id === b.dataset.id)));
+  body.querySelectorAll(".r-del").forEach(b => b.onclick = () =>
+    confirmDlg("删除该规则？其名下所有待触发动作会立即自动撤销，历史留痕保留。",
+      async () => {
+        try { await api("DELETE", "/api/lifecycle/rules/" + encodeURIComponent(b.dataset.id));
+          toast("规则已删除", "ok"); refreshAll(); }
+        catch (e) { toast(e.message, "bad"); }
+      }, true));
+  body.querySelectorAll(".r-toggle").forEach(b => b.onclick = async () => {
+    try {
+      await api("POST", "/api/lifecycle/rules/" + encodeURIComponent(b.dataset.id) + "/toggle",
+                { enabled: b.dataset.en === "1" });
+      toast("已更新", "ok"); refreshAll();
+    } catch (e) { toast(e.message, "bad"); }
+  });
+}
+
+function ruleDialog(existing) {
+  const isEdit = !!existing;
+  const r = existing || {
+    name: "", path: "/", match: "prefix", action: "archive",
+    age_amount: 30, age_unit: "days", age_base: "atime", priority: 100,
+    enabled: true, note: "",
+  };
+  const body = document.createElement("div");
+  body.innerHTML = `
+    <div class="form-row" style="margin-bottom:10px">
+      <label class="fl" style="flex:2">规则名称
+        <input type="text" id="f-name" value="${esc(r.name)}" placeholder="例如：数据目录冷归档"></label>
+      <label class="fl">优先级（大优先）
+        <input type="number" id="f-prio" value="${r.priority}"></label>
+    </div>
+    <div class="form-row" style="margin-bottom:10px">
+      <label class="fl" style="flex:2">路径
+        <input type="text" id="f-path" value="${esc(r.path)}" placeholder="/data"></label>
+      <label class="fl">匹配方式
+        <select id="f-match">
+          <option value="prefix" ${r.match === "prefix" ? "selected" : ""}>前缀（含子目录）</option>
+          <option value="exact" ${r.match === "exact" ? "selected" : ""}>精确路径</option>
+        </select></label>
+    </div>
+    <div class="form-row" style="margin-bottom:10px">
+      <label class="fl">动作
+        <select id="f-action">
+          <option value="archive" ${r.action === "archive" ? "selected" : ""}>❄ 归档到冷数据</option>
+          <option value="trash" ${r.action === "trash" ? "selected" : ""}>🗑 移入回收站</option>
+        </select></label>
+      <label class="fl">计时基准
+        <select id="f-base">
+          <option value="atime" ${r.age_base === "atime" ? "selected" : ""}>最近访问时间</option>
+          <option value="mtime" ${r.age_base === "mtime" ? "selected" : ""}>最近修改时间</option>
+          <option value="ctime" ${r.age_base === "ctime" ? "selected" : ""}>创建时间</option>
+        </select></label>
+      <label class="fl">超过
+        <span style="display:flex;gap:6px">
+          <input type="number" id="f-amount" value="${r.age_amount}" min="1" style="flex:1">
+          <select id="f-unit" style="flex:1">
+            ${Object.entries(UNIT_LABEL).map(([v, l]) =>
+              `<option value="${v}" ${r.age_unit === v ? "selected" : ""}>${l}</option>`).join("")}
+          </select>
+        </span></label>
+    </div>
+    <label class="fl">备注 <input type="text" id="f-note" value="${esc(r.note || "")}"></label>
+    <div class="small muted" style="margin-top:8px">
+      条件满足后先进入 <b>${fmtAge(meta.grace_seconds)}</b> 撤销宽限期再执行；
+      同动作被多条规则命中时，按优先级/路径长度取第一条，其余在预览中标记为被覆盖。
+    </div>`;
+  modal({
+    title: isEdit ? "编辑生命周期规则" : "新增生命周期规则", body, wide: true,
+    okText: isEdit ? "保存" : "创建",
+    onOk: async (el) => {
+      const payload = {
+        name: el.querySelector("#f-name").value.trim(),
+        path: el.querySelector("#f-path").value.trim() || "/",
+        match: el.querySelector("#f-match").value,
+        action: el.querySelector("#f-action").value,
+        age_base: el.querySelector("#f-base").value,
+        age_amount: +el.querySelector("#f-amount").value,
+        age_unit: el.querySelector("#f-unit").value,
+        priority: +el.querySelector("#f-prio").value || 0,
+        note: el.querySelector("#f-note").value,
+        enabled: true,
+      };
+      try {
+        if (isEdit) await api("PUT", "/api/lifecycle/rules/" + encodeURIComponent(r.id), payload);
+        else await api("POST", "/api/lifecycle/rules", payload);
+        toast(isEdit ? "规则已更新" : "规则已创建", "ok");
+        refreshAll();
+      } catch (e) { toast(e.message, "bad"); return false; }
+    }
+  });
+}
+
+// ------------------------------------------------------------------ 历史
+function statusBadge(st) {
+  const map = {
+    archived: ["st-archived", "❄ 已归档"],
+    restored: ["st-restored", "⟳ 已取回"],
+    trashed: ["st-trashed", "🗑 移入回收站"],
+    canceled: ["st-canceled", "↩ 已撤销"],
+    skipped: ["st-canceled", "跳过"],
+    archived_failed: ["st-canceled", "失败"],
+  };
+  const [cls, label] = map[st] || ["", st];
+  return `<span class="${cls}">${esc(label)}</span>`;
+}
+
+async function loadHistory() {
+  const path = document.getElementById("h-path").value.trim();
+  const action = document.getElementById("h-action").value;
+  const status = document.getElementById("h-status").value;
+  const q = new URLSearchParams();
+  if (path) q.set("path", path);
+  if (action) q.set("action", action);
+  if (status) q.set("status", status);
+  q.set("limit", "200");
+  const d = await api("GET", "/api/lifecycle/history?" + q.toString());
+  const body = document.getElementById("history-body");
+  if (!d.items.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty small">暂无历史记录</td></tr>`;
+    return;
+  }
+  body.innerHTML = d.items.map(h => `
+    <tr>
+      <td class="small nowrap">${fmtTs(h.ts)}</td>
+      <td><div style="font-weight:600">${esc(h.name)}</div>
+          <div class="rule-path">${esc(h.path)}</div></td>
+      <td class="act-${h.action} small">${esc(ACTION_LABEL[h.action] || h.action)}</td>
+      <td>${statusBadge(h.status)}</td>
+      <td>${h.rule_name ? `<span class="badge acc plain">${esc(h.rule_name)}</span>`
+                        : '<span class="muted small">—</span>'}</td>
+      <td class="small">${esc(h.by)}</td>
+      <td class="small dim" style="max-width:420px">${esc(h.detail || "")}
+        ${h.freed_bytes != null ? `<br><span class="mono">释放热存储 ${fmtBytes(h.freed_bytes)}</span>` : ""}</td>
+    </tr>`).join("");
+}
+
+// ------------------------------------------------------------------ 交互
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  t.classList.add("active");
+  document.querySelectorAll(".pane").forEach(p => p.style.display = "none");
+  document.getElementById("pane-" + t.dataset.tab).style.display = "";
+  if (t.dataset.tab === "pending") loadPending();
+  if (t.dataset.tab === "preview") loadPreview();
+  if (t.dataset.tab === "rules") renderRules();
+  if (t.dataset.tab === "history") loadHistory();
+});
+document.getElementById("pv-run").onclick = loadPreview;
+document.getElementById("h-run").onclick = loadHistory;
+document.getElementById("btn-add").onclick = () => ruleDialog(null);
+document.getElementById("btn-scan").onclick = async () => {
+  if (!isAdmin) return toast("仅 admin 可手动扫描", "warn");
+  try {
+    const r = await api("POST", "/api/lifecycle/scan", {});
+    toast(`扫描完成：新增 ${r.created} · 执行 ${r.executed} · 撤销 ${r.canceled}`, "ok");
+    refreshAll();
+  } catch (e) { toast(e.message, "bad"); }
+};
+document.querySelectorAll(".btn-reload").forEach(b => b.onclick = refreshAll);
+
+async function refreshAll() {
+  await loadStats();
+  const active = document.querySelector(".tab.active").dataset.tab;
+  if (active === "pending") loadPending();
+  else if (active === "preview") loadPreview();
+  else if (active === "rules") renderRules();
+  else if (active === "history") loadHistory();
+}
+
+initPage("lifecycle.html", "生命周期").then(async () => {
+  const me = await api("GET", "/api/auth/me");
+  isAdmin = (me.caps || []).includes("admin");
+  document.getElementById("btn-add").style.display = isAdmin ? "" : "none";
+  document.getElementById("btn-scan").style.display = isAdmin ? "" : "none";
+  if (!isAdmin) document.getElementById("no-perm").style.display = "";
+  await refreshAll();
+  DFSVS.poll(async () => {
+    if (document.querySelector(".tab.active").dataset.tab === "pending") {
+      await loadStats();
+      loadPending();
+    }
+  }, 5000);
+});
+</script>
+</body>
+</html>

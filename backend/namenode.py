@@ -28,16 +28,18 @@ import json
 import os
 import random
 import threading
+import time
 
 from . import chunking, config
 from .auth import AuthManager, PermissionManager
 from .filesystem import FsError, VirtualFS
+from .lifecycle import LifecycleManager
 from .metadata import MetadataStore
-from .util import (HttpError, LRU, RateCounter, RingBuffer, b64e, gen_id,
-                   guess_mime, hour_key, http_json, http_request,
+from .util import (HttpError, LRU, RateCounter, RingBuffer, atomic_write_bytes,
+                   b64e, gen_id, guess_mime, hour_key, http_json, http_request,
                    is_text_mime, needs_recovery, canonical_access_op,
-                   now, parse_range, sha256_bytes, short_hash, split_multi,
-                   vv_compare, vv_merge)
+                   now, parse_range, read_bytes, sha256_bytes, short_hash,
+                   split_multi, vv_compare, vv_merge)
 from .versioning import VersionStore
 
 
@@ -69,6 +71,14 @@ class NameNode:
         self.auth = AuthManager(self.meta)
         self.perms = PermissionManager(self.meta, self.auth)
         self.versions = VersionStore(self)
+        self.lifecycle = LifecycleManager(self)
+
+        # ---- 冷归档库（NameNode 托管的冷数据块，data/cold/<bid>.dat） ----
+        self.cold_dir = config.COLD_VAULT_DIR
+        os.makedirs(self.cold_dir, exist_ok=True)
+        self._vault_lock = threading.RLock()
+        self._restoring_blocks = set()      # 正在取回的块（去重）
+        self._restore_lock = threading.RLock()
 
         # ---- 节点注册表（内存态；摘要持久化到 cluster 文档） ----
         self.nodes = {}                  # node_id -> NodeInfo dict
@@ -106,6 +116,7 @@ class NameNode:
         self.auth.ensure_seed()
         self.perms.ensure_seed()
         self.versions.ensure_head()
+        self.lifecycle.ensure_init()
         self._init_blocks_doc()
         self._init_stats_doc()
         self.meta.start_flusher()
@@ -120,6 +131,7 @@ class NameNode:
             t = threading.Thread(target=target, name=name, daemon=True)
             t.start()
             self._threads.append(t)
+        self.lifecycle.start()
 
         if with_http:
             from .http_server import start_namenode_server
@@ -423,6 +435,15 @@ class NameNode:
                     commands.append({"type": "delete", "block_id": bid,
                                      "reason": "namenode 块表中不存在"})
                     continue
+                # 已下沉冷归档层的块：DataNode 不应再持有热副本
+                # （删除命令可能还在路上，这里重复下发幂等删除，且不重新登记副本）
+                if blk.get("tier") == "cold":
+                    commands.append({"type": "delete", "block_id": bid,
+                                     "reason": "块已归档冷数据层，热副本应删除"})
+                    if node_id in blk.get("replicas", {}):
+                        del blk["replicas"][node_id]
+                        touched = True
+                    continue
                 if rep.get("genstamp", 0) < blk.get("genstamp", 0):
                     commands.append({"type": "delete", "block_id": bid,
                                      "reason": "genstamp 过期（stale replica）"})
@@ -507,6 +528,17 @@ class NameNode:
                 self.under_replicated.pop(bid, None)
                 self.missing_blocks.discard(bid)
             return None
+        # 冷归档块由 NameNode 冷归档库托管，无 DataNode 热副本属预期状态，
+        # 不进入恢复队列（读取时透明取回重建热副本）。
+        if blk.get("tier") == "cold":
+            with self.health_lock:
+                self.under_replicated.pop(bid, None)
+                self.missing_blocks.discard(bid)
+                self.scheduled.pop(bid, None)
+            vault_ok = self._vault_has(bid)
+            return {"block": bid, "state": "cold" if vault_ok else "cold_lost",
+                    "live": 0, "desired": blk.get("desired",
+                                                  config.DEFAULT_REPLICATION)}
         good = self.live_good_replicas(blk)
         desired = blk.get("desired", config.DEFAULT_REPLICATION)
         state = "healthy"
@@ -569,6 +601,12 @@ class NameNode:
             if not blk:
                 with self.health_lock:
                     self.under_replicated.pop(bid, None)
+                continue
+            if blk.get("tier") == "cold":
+                # 冷归档块不参与热副本再复制（取回时单独处理）
+                with self.health_lock:
+                    self.under_replicated.pop(bid, None)
+                    self.scheduled.pop(bid, None)
                 continue
             good = self.live_good_replicas(blk)
             desired = blk.get("desired", config.DEFAULT_REPLICATION)
@@ -729,6 +767,9 @@ class NameNode:
                 "desired": desired or config.DEFAULT_REPLICATION,
                 "created_at": now(),
                 "replicas": {},
+                "tier": "hot",               # hot | cold（下沉到 NameNode 冷归档库）
+                "archived_at": None,
+                "restored_at": None,
             }
             self.meta.touch("blocks")
             return bid, gs
@@ -879,10 +920,11 @@ class NameNode:
         return b"".join(out)
 
     def read_block(self, bid, start=None, end=None, verify=True,
-                   use_cache=True):
+                   use_cache=True, owner_inode_id=None):
         """
         读一个块：存活好副本轮询，校验失败自动切换下一副本。
-        返回 (data, block_meta, served_by)。
+        冷归档块（tier=cold）先从冷归档库透明取回（重建热副本）再读，
+        对调用方完全透明；返回 (data, block_meta, served_by)。
         """
         if use_cache and start is None:
             cached = self.block_cache.get(bid)
@@ -892,6 +934,9 @@ class NameNode:
             blk = self._block_meta(bid)
         if not blk:
             raise MissingBlockError(f"块表中不存在: {bid}")
+        # ---- 冷数据透明取回 ----
+        if blk.get("tier") == "cold":
+            blk = self.restore_block(bid, owner_inode_id=owner_inode_id)
         candidates = self.live_good_replicas(blk)
         if not candidates:
             # 放宽：任何持有该块且存活的节点（读时校验兜底）
@@ -950,14 +995,20 @@ class NameNode:
                 raise FsError(f"不是文件: {path}")
             block_ids = list(inode.get("block_ids", []))
             size = inode.get("size", 0)
+            inode_id = inode["id"]
+            was_cold = inode.get("tier") in ("archived", "restoring")
+            cold_blocks = {bid for bid in block_ids
+                           if (self._block_meta(bid) or {}).get("tier") == "cold"}
         offset = max(0, min(offset, size))
         end = size - 1 if length is None else min(size - 1, offset + length - 1)
         if size == 0 or offset > end:
             return b"", {"size": size, "start": offset, "end": offset,
-                         "nodes": [], "blocks_touched": 0}
+                         "nodes": [], "blocks_touched": 0,
+                         "restored": 0, "from_cold": was_cold}
         out = []
         nodes = []
         touched = 0
+        restored_here = set()
         pos = offset
         # 逐块定位
         block_starts = []
@@ -975,17 +1026,26 @@ class NameNode:
             s = max(pos, bstart) - bstart
             e = min(end, bend) - bstart
             full = (s == 0 and e == bsize - 1)
+            before_cold = bid in cold_blocks
             data, _blk, node = self.read_block(
-                bid, None if full else s, None if full else e)
+                bid, None if full else s, None if full else e,
+                owner_inode_id=inode_id)
+            if before_cold:
+                restored_here.add(bid)
             out.append(data)
             nodes.append(node)
             touched += 1
         data = b"".join(out)
+        # 冷数据文件：访问后收敛 inode 层状态（全部块已取回才标记 hot）
+        if restored_here or was_cold:
+            self.lifecycle.note_blocks_restored(inode_id, restored_here
+                                                or cold_blocks)
         # 热度记录
         self.record_access(path, "download", user, len(data),
                            nodes[0] if nodes else None)
         return data, {"size": size, "start": pos, "end": end,
-                      "nodes": sorted(set(nodes)), "blocks_touched": touched}
+                      "nodes": sorted(set(nodes)), "blocks_touched": touched,
+                      "restored": len(restored_here), "from_cold": was_cold}
 
     # ==================================================================
     # 上传会话（分块上传 + 断点续传）
@@ -1302,6 +1362,7 @@ class NameNode:
             "ext_count": fs_stats["ext_count"],
             "trash": self.fs.trash_stats(),
             "versions": self.versions.repo_stats(),
+            "lifecycle": self.lifecycle.stats(),
             "cache": self.block_cache.stats(),
             "api_rate": round(self.api_rate.rate(), 2),
             "nn_uptime": now() - self.started_at,
@@ -1556,6 +1617,212 @@ class NameNode:
         return {"ok": True, "enabled": self.sim_chaos}
 
     # ==================================================================
+    # 冷数据层：归档下沉 / 透明取回（NameNode 冷归档库 data/cold/）
+    # ==================================================================
+    def _vault_path(self, bid):
+        return os.path.join(self.cold_dir, bid + ".dat")
+
+    def _vault_has(self, bid):
+        return os.path.exists(self._vault_path(bid))
+
+    def cold_block_count(self):
+        with self._vault_lock:
+            try:
+                return len([n for n in os.listdir(self.cold_dir)
+                            if n.endswith(".dat")])
+            except OSError:
+                return 0
+
+    def _vault_put(self, bid, data, checksum):
+        """写入冷归档库并立即复核校验和，确认内容不丢。"""
+        if sha256_bytes(data) != checksum:
+            raise NNError(f"冷归档写入校验失败: {bid}")
+        path = self._vault_path(bid)
+        with self._vault_lock:
+            atomic_write_bytes(path, data)
+            if sha256_bytes(read_bytes(path)) != checksum:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                raise NNError(f"冷归档库落盘复核失败: {bid}")
+
+    def _vault_get(self, bid, checksum):
+        path = self._vault_path(bid)
+        data = read_bytes(path)
+        if sha256_bytes(data) != checksum:
+            raise MissingBlockError(
+                f"冷归档块 {bid} 校验和不匹配（冷副本损坏）")
+        return data
+
+    def _vault_delete(self, bid):
+        with self._vault_lock:
+            try:
+                os.unlink(self._vault_path(bid))
+            except FileNotFoundError:
+                pass
+
+    def _hot_referencers(self, bid, exclude_inode_id=None):
+        """除 exclude_inode 外，仍引用该块且处于热层的活动 inode 集合。"""
+        refs = set()
+        with self.meta.lock:
+            for _p, inode in self.fs.all_files():
+                if inode["id"] == exclude_inode_id:
+                    continue
+                if inode.get("tier") == "archived":
+                    continue
+                if bid in inode.get("block_ids", []):
+                    refs.add(inode["id"])
+        return refs
+
+    def archive_inode_blocks(self, inode):
+        """
+        把文件的独占块下沉冷归档库：
+          1. 从存活热副本读出块内容并校验；
+          2. 写入冷归档库（落盘后再次复核 sha256）；
+          3. 块表 tier=cold、摘除热副本登记，向 DataNode 下发删除；
+          4. 仍被其它热文件共享（内容去重）的块保留热副本，标记为 mixed。
+        返回 {evacuated, mixed, freed_bytes, vault_blocks}。
+        """
+        evacuated = mixed = freed = 0
+        with self.meta.lock:
+            bids = list(inode.get("block_ids", []))
+        for bid in bids:
+            with self.meta.lock:
+                blk = self.meta.get("blocks")["blocks"].get(bid)
+            if not blk or blk.get("tier") == "cold":
+                if blk and blk.get("tier") == "cold":
+                    evacuated += 1
+                continue
+            if self._hot_referencers(bid, exclude_inode_id=inode["id"]):
+                # 去重共享块：其它热文件仍在使用，保留热副本
+                mixed += 1
+                continue
+            try:
+                data, _m, _node = self.read_block(bid)
+            except MissingBlockError:
+                self.log_event("ERROR", "lifecycle", "archive_skip", bid,
+                               "system", "无可用热副本，跳过该块（不丢数据）")
+                continue
+            self._vault_put(bid, data, blk["checksum"])
+            self.block_cache.invalidate(bid)
+            with self.meta.lock:
+                bdoc = self.meta.get("blocks")
+                b2 = bdoc["blocks"].get(bid)
+                if not b2:
+                    continue
+                nids = list((b2.get("replicas") or {}).keys())
+                b2["tier"] = "cold"
+                b2.setdefault("tier_history", []).append(
+                    {"tier": "cold", "at": now()})
+                b2["archived_at"] = now()
+                b2["replicas"] = {}
+                self.meta.touch("blocks", flush=False)
+            for nid in nids:
+                self._enqueue_command(nid, {
+                    "type": "delete", "block_id": bid,
+                    "reason": "生命周期归档：块已下沉冷数据层"})
+            with self.health_lock:
+                self.under_replicated.pop(bid, None)
+                self.missing_blocks.discard(bid)
+                self.scheduled.pop(bid, None)
+            evacuated += 1
+            freed += len(data)
+            self.log_event("INFO", "lifecycle", "block_evacuate", bid,
+                           "system", f"下沉冷归档库（原热副本 {','.join(nids)}）")
+        with self.meta.lock:
+            self.meta.touch("blocks")
+        return {"evacuated": evacuated, "mixed": mixed, "freed_bytes": freed,
+                "vault_blocks": self.cold_block_count()}
+
+    def restore_block(self, bid, owner_inode_id=None):
+        """
+        从冷归档库取回单个块：vault 读校验 -> 流水线复制到 DataNode
+        -> 块表 tier=hot -> 删 vault。并发去重。返回最新块表条目。
+        """
+        with self._restore_lock:
+            with self.meta.lock:
+                blk = self.meta.get("blocks")["blocks"].get(bid)
+                if not blk:
+                    raise MissingBlockError(f"块表中不存在: {bid}")
+                if blk.get("tier") != "cold":
+                    return blk
+                if bid in self._restoring_blocks:
+                    restoring = True
+                else:
+                    restoring = False
+                    self._restoring_blocks.add(bid)
+        if restoring:
+            # 等待另一个线程取回完成（块小，演示环境取回很快）
+            waited = 0.0
+            while waited < 30:
+                with self.meta.lock:
+                    b2 = self.meta.get("blocks")["blocks"].get(bid)
+                    if not b2 or b2.get("tier") == "hot":
+                        return b2
+                time.sleep(0.05)
+                waited += 0.05
+            with self.meta.lock:
+                return self.meta.get("blocks")["blocks"].get(bid)
+
+        try:
+            with self.meta.lock:
+                blk = self.meta.get("blocks")["blocks"].get(bid)
+                checksum = blk["checksum"]
+                desired = blk.get("desired", config.DEFAULT_REPLICATION)
+                size = blk["size"]
+                gs = blk.get("genstamp", config.GENSTAMP_INITIAL)
+            data = self._vault_get(bid, checksum)
+            if config.LIFECYCLE_RESTORE_DELAY:
+                time.sleep(config.LIFECYCLE_RESTORE_DELAY)  # 模拟冷介质取回耗时
+            targets = self.choose_targets(size, desired)
+            result = self._pipeline_put(bid, data, checksum, gs, targets)
+            if not result["stored"]:
+                raise MissingBlockError(
+                    f"冷取回失败：无 DataNode 可写入（{result['failed']}）")
+            with self.meta.lock:
+                bdoc = self.meta.get("blocks")
+                b2 = bdoc["blocks"].get(bid)
+                if b2:
+                    for nid in result["stored"]:
+                        self._record_replica(bid, b2, nid, gs, checksum, size,
+                                             "ok")
+                    b2["tier"] = "hot"
+                    b2.setdefault("tier_history", []).append(
+                        {"tier": "hot", "at": now()})
+                    b2["restored_at"] = now()
+                    self.meta.touch("blocks")
+            self.block_cache.invalidate(bid)
+            self._vault_delete(bid)
+            with self.meta.lock:
+                return self.meta.get("blocks")["blocks"].get(bid)
+        finally:
+            with self._restore_lock:
+                self._restoring_blocks.discard(bid)
+
+    def restore_file(self, path, actor="admin", manual=False):
+        """取回文件的全部冷块（手动按钮；读路径本身已透明）。"""
+        with self.meta.lock:
+            inode = self.fs.resolve(path)
+            if inode["type"] != "file":
+                raise FsError(f"不是文件: {path}")
+            bids = list(inode.get("block_ids", []))
+            inode_id = inode["id"]
+            cold = [b for b in bids
+                    if (self._block_meta(b) or {}).get("tier") == "cold"]
+        if not cold:
+            return {"ok": True, "restored": 0, "tier": "hot"}
+        done = 0
+        for bid in cold:
+            self.restore_block(bid, owner_inode_id=inode_id)
+            done += 1
+        result = self.lifecycle.note_blocks_restored(inode_id, set(cold))
+        self.log_event("INFO", "lifecycle", "restore_manual", path, actor,
+                       f"{'手动' if manual else '透明'}取回 {done}/{len(cold)} 块")
+        return {"ok": True, "restored": done, "total": len(cold),
+                "tier": (result or {}).get("state", "hot")}
+
+    # ==================================================================
     # GC（版本树保护下的块回收）
     # ==================================================================
     def referenced_blocks(self):
@@ -1606,6 +1873,8 @@ class NameNode:
                     self._enqueue_command(nid, {
                         "type": "delete", "block_id": bid,
                         "reason": "GC：无引用的孤儿块"})
+                if blk.get("tier") == "cold":
+                    self._vault_delete(bid)   # 冷归档库副本一并清理
                 deleted += 1
                 with self.health_lock:
                     self.under_replicated.pop(bid, None)
@@ -1660,8 +1929,12 @@ class NameNode:
                     "checksum": blk["checksum"][:16],
                     "genstamp": blk["genstamp"],
                     "desired": blk.get("desired"),
+                    "tier": blk.get("tier", "hot"),
+                    "archived_at": blk.get("archived_at"),
+                    "restored_at": blk.get("restored_at"),
                     "live": len(live),
-                    "status": ("missing" if not live else
+                    "status": ("cold" if blk.get("tier") == "cold" else
+                               "missing" if not live else
                                "under" if len(live) < blk.get("desired", 3)
                                else "ok"),
                     "replicas": [

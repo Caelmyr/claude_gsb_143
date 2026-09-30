@@ -176,6 +176,11 @@ class VirtualFS:
                 existing["mime"] = mime
                 existing["modified_at"] = ts
                 existing["file_version"] = existing.get("file_version", 1) + 1
+                # 覆盖写 => 新数据为热层；清掉旧的归档/取回标记
+                existing["tier"] = "hot"
+                existing.pop("archived_at", None)
+                existing.pop("restored_at", None)
+                existing.pop("archive_rule_id", None)
                 self._touch_dir_mtime(parent)
                 self.meta.touch("fs")
                 return existing
@@ -188,6 +193,7 @@ class VirtualFS:
                 "content_hash": content_hash, "mime": mime,
                 "file_version": 1,
                 "access_count": 0, "last_access": None,
+                "tier": "hot",                # hot | archived | restoring（生命周期）
             }
             self._inodes()[inode["id"]] = inode
             parent["children"].append(inode["id"])
@@ -297,6 +303,9 @@ class VirtualFS:
             "content_hash": inode.get("content_hash"),
             "access_count": inode.get("access_count", 0),
             "last_access": inode.get("last_access"),
+            "tier": inode.get("tier", "hot"),
+            "archived_at": inode.get("archived_at"),
+            "restored_at": inode.get("restored_at"),
             "blocks": len(inode.get("block_ids", [])),
             "thumb": bool(inode.get("mime", "").startswith("image/")),
         }
@@ -360,7 +369,8 @@ class VirtualFS:
     def _recycle(self):
         return self.meta.get("recycle")
 
-    def delete_to_trash(self, path, actor="admin"):
+    def delete_to_trash(self, path, actor="admin", rule_id=None,
+                        rule_name=None):
         """删除 = 摘出原父目录，挂到 .trash 下，并登记回收站条目。"""
         with self.meta.lock:
             inode = self.resolve(path)
@@ -394,6 +404,9 @@ class VirtualFS:
                 "original_parent": original_parent,
                 "deleted_at": now(),
                 "deleted_by": actor,
+                "rule_id": rule_id or "",
+                "rule_name": rule_name or "",
+                "tier_at_delete": inode.get("tier", "hot"),
                 "retention_days": retention,
                 "expires_at": now() + ttl_seconds(
                     retention, config.TRASH_RETENTION_UNIT),

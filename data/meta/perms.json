@@ -3,11 +3,11 @@
  "vv": {
   "namenode": 5
  },
- "updated_at": 1790384122.2807891,
+ "updated_at": 1790772943.087982,
  "data": {
   "rules": [
    {
-    "id": "acl_267682432dec",
+    "id": "acl_d1a885560169",
     "path": "/finance",
     "principal": "viewer",
     "principal_type": "role",
@@ -19,10 +19,10 @@
     "effect": "deny",
     "priority": 200,
     "note": "财务目录禁止只读用户访问",
-    "created_at": 1790384122.27283
+    "created_at": 1790772943.0826848
    },
    {
-    "id": "acl_038afbfe066c",
+    "id": "acl_1a0e0058b6b1",
     "path": "/finance",
     "principal": "alice",
     "principal_type": "user",
@@ -33,10 +33,10 @@
     "effect": "allow",
     "priority": 210,
     "note": "财务目录授权 alice",
-    "created_at": 1790384122.276813
+    "created_at": 1790772943.083879
    },
    {
-    "id": "acl_928f1029d84c",
+    "id": "acl_2808831b007a",
     "path": "/public",
     "principal": "viewer",
     "principal_type": "role",
@@ -46,10 +46,10 @@
     "effect": "allow",
     "priority": 150,
     "note": "公告目录全员可读",
-    "created_at": 1790384122.2781558
+    "created_at": 1790772943.0852032
    },
    {
-    "id": "acl_624da8c9b6a9",
+    "id": "acl_bf37753efe7f",
     "path": "/logs",
     "principal": "bob",
     "principal_type": "user",
@@ -59,10 +59,10 @@
     "effect": "allow",
     "priority": 150,
     "note": "审计用户可读日志目录",
-    "created_at": 1790384122.2794487
+    "created_at": 1790772943.086479
    },
    {
-    "id": "acl_904ffbe32129",
+    "id": "acl_1f62858d0697",
     "path": "/tmp",
     "principal": "viewer",
     "principal_type": "role",
@@ -72,7 +72,7 @@
     "effect": "allow",
     "priority": 120,
     "note": "临时目录开放写（练习用）",
-    "created_at": 1790384122.2807846
+    "created_at": 1790772943.0879762
    }
   ],
   "default_policy": {
@@ -93,6 +93,6 @@
     "admin"
    ]
   },
-  "updated_at": 1790384120.0051591
+  "updated_at": 1790772940.8086078
  }
 }

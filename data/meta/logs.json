@@ -1,13 +1,13 @@
 {
  "doc": "logs",
  "vv": {
-  "namenode": 109
+  "namenode": 31
  },
- "updated_at": 1790427259.4392588,
+ "updated_at": 1790772985.1963527,
  "data": {
   "items": [
    {
-    "ts": 1790297723.8869298,
+    "ts": 1790686544.7625282,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -16,7 +16,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790298172.7835624,
+    "ts": 1790686993.6591609,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -25,7 +25,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790298530.5732322,
+    "ts": 1790687351.4488306,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -34,7 +34,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790298561.5701034,
+    "ts": 1790687382.4457018,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -43,7 +43,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790299186.9543009,
+    "ts": 1790688007.8298993,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -52,7 +52,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790299835.0953166,
+    "ts": 1790688655.970915,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -61,7 +61,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790300377.4605854,
+    "ts": 1790689198.3361838,
     "level": "INFO",
     "source": "namenode",
     "action": "start",
@@ -70,7 +70,7 @@
     "detail": "NameNode 启动完成"
    },
    {
-    "ts": 1790300421.0164933,
+    "ts": 1790689241.8920918,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -79,7 +79,7 @@
     "detail": "角色 viewer，来自 127.0.0.1"
    },
    {
-    "ts": 1790301630.3570082,
+    "ts": 1790690451.2326066,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -88,7 +88,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790302141.3838358,
+    "ts": 1790690962.2594342,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -97,7 +97,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790302177.295769,
+    "ts": 1790690998.1713674,
     "level": "INFO",
     "source": "namenode",
     "action": "start",
@@ -106,7 +106,7 @@
     "detail": "NameNode 启动完成"
    },
    {
-    "ts": 1790302961.5354607,
+    "ts": 1790691782.4110591,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -115,7 +115,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790303131.147714,
+    "ts": 1790691952.0233123,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -124,7 +124,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790303434.030267,
+    "ts": 1790692254.9058654,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -133,7 +133,7 @@
     "detail": "角色 operator，来自 127.0.0.1"
    },
    {
-    "ts": 1790303554.53472,
+    "ts": 1790692375.4103184,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -142,7 +142,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790303636.6187203,
+    "ts": 1790692457.4943187,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -151,7 +151,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790304337.9207146,
+    "ts": 1790693158.796313,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -160,7 +160,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790304681.2104044,
+    "ts": 1790693502.0860028,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -169,7 +169,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790304849.5826194,
+    "ts": 1790693670.4582179,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -178,7 +178,7 @@
     "detail": "DataNode dn3 注册 rack=rack-3"
    },
    {
-    "ts": 1790305571.3276277,
+    "ts": 1790694392.203226,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -187,7 +187,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790305729.9256835,
+    "ts": 1790694550.801282,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -196,7 +196,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790305797.2043207,
+    "ts": 1790694618.079919,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -205,7 +205,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790306390.8105474,
+    "ts": 1790695211.6861458,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -214,7 +214,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790306848.219749,
+    "ts": 1790695669.0953474,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -223,7 +223,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790307553.9475887,
+    "ts": 1790696374.823187,
     "level": "WARN",
     "source": "auth",
     "action": "login_failed",
@@ -232,7 +232,7 @@
     "detail": "用户名或口令错误"
    },
    {
-    "ts": 1790307787.3341155,
+    "ts": 1790696608.209714,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -241,7 +241,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790308096.37092,
+    "ts": 1790696917.2465184,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -250,7 +250,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790309930.0931067,
+    "ts": 1790698750.9687052,
     "level": "INFO",
     "source": "gc",
     "action": "gc_blocks",
@@ -259,7 +259,7 @@
     "detail": "回收 4 个未引用块"
    },
    {
-    "ts": 1790310957.987388,
+    "ts": 1790699778.8629863,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -268,7 +268,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790311039.6485872,
+    "ts": 1790699860.5241857,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -277,7 +277,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790311260.1880863,
+    "ts": 1790700081.0636847,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -286,7 +286,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790311414.0661092,
+    "ts": 1790700234.9417076,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -295,7 +295,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790312012.727666,
+    "ts": 1790700833.6032643,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -304,7 +304,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790312907.2943673,
+    "ts": 1790701728.1699657,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -313,7 +313,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790313067.2972512,
+    "ts": 1790701888.1728497,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -322,7 +322,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790313260.8622973,
+    "ts": 1790702081.7378957,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -331,7 +331,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790313974.118762,
+    "ts": 1790702794.9943604,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -340,7 +340,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790314210.092329,
+    "ts": 1790703030.9679275,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -349,7 +349,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790315639.2761097,
+    "ts": 1790704460.1517081,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -358,7 +358,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790316281.5621567,
+    "ts": 1790705102.437755,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -367,7 +367,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790317170.4633613,
+    "ts": 1790705991.3389597,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -376,7 +376,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790317983.755486,
+    "ts": 1790706804.6310844,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -385,7 +385,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790318032.5860648,
+    "ts": 1790706853.4616632,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -394,7 +394,7 @@
     "detail": "角色 operator，来自 127.0.0.1"
    },
    {
-    "ts": 1790318139.597091,
+    "ts": 1790706960.4726894,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -403,7 +403,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790318435.0943716,
+    "ts": 1790707255.96997,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -412,7 +412,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790318609.5656457,
+    "ts": 1790707430.4412441,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -421,7 +421,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790318672.278217,
+    "ts": 1790707493.1538155,
     "level": "INFO",
     "source": "gc",
     "action": "gc_blocks",
@@ -430,7 +430,7 @@
     "detail": "回收 4 个未引用块"
    },
    {
-    "ts": 1790318855.2622144,
+    "ts": 1790707676.1378129,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -439,7 +439,7 @@
     "detail": "角色 operator，来自 127.0.0.1"
    },
    {
-    "ts": 1790319057.481466,
+    "ts": 1790707878.3570645,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -448,7 +448,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790319454.5575151,
+    "ts": 1790708275.4331136,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -457,7 +457,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790320264.2087548,
+    "ts": 1790709085.0843532,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -466,7 +466,7 @@
     "detail": "DataNode dn3 注册 rack=rack-3"
    },
    {
-    "ts": 1790320314.492014,
+    "ts": 1790709135.3676124,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -475,7 +475,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790321063.1982105,
+    "ts": 1790709884.073809,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -484,7 +484,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790321318.307433,
+    "ts": 1790710139.1830313,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -493,7 +493,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790322987.4040945,
+    "ts": 1790711808.279693,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -502,7 +502,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790323068.1413896,
+    "ts": 1790711889.016988,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -511,7 +511,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790323269.918115,
+    "ts": 1790712090.7937133,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -520,7 +520,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790324183.2009184,
+    "ts": 1790713004.0765169,
     "level": "INFO",
     "source": "recovery",
     "action": "node_revived",
@@ -529,7 +529,7 @@
     "detail": "节点 dn2 恢复心跳，重新标记 LIVE"
    },
    {
-    "ts": 1790324287.6011767,
+    "ts": 1790713108.4767752,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -538,7 +538,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790324861.6189575,
+    "ts": 1790713682.494556,
     "level": "INFO",
     "source": "recovery",
     "action": "node_revived",
@@ -547,7 +547,7 @@
     "detail": "节点 dn2 恢复心跳，重新标记 LIVE"
    },
    {
-    "ts": 1790325806.6756017,
+    "ts": 1790714627.5512002,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -556,7 +556,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790326454.8158212,
+    "ts": 1790715275.6914196,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -565,7 +565,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790326860.6982524,
+    "ts": 1790715681.5738509,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -574,7 +574,7 @@
     "detail": "DataNode dn3 注册 rack=rack-3"
    },
    {
-    "ts": 1790327432.094676,
+    "ts": 1790716252.9702744,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -583,7 +583,7 @@
     "detail": "角色 operator，来自 127.0.0.1"
    },
    {
-    "ts": 1790327487.0877829,
+    "ts": 1790716307.9633813,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -592,7 +592,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790328214.2026546,
+    "ts": 1790717035.078253,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -601,7 +601,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790329064.8991776,
+    "ts": 1790717885.774776,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -610,7 +610,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790329280.032861,
+    "ts": 1790718100.9084594,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -619,7 +619,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790329306.958229,
+    "ts": 1790718127.8338275,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -628,7 +628,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790329730.7589908,
+    "ts": 1790718551.6345892,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -637,7 +637,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790330194.3220708,
+    "ts": 1790719015.1976693,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -646,7 +646,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790330371.203877,
+    "ts": 1790719192.0794754,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -655,7 +655,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790330476.869133,
+    "ts": 1790719297.7447314,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -664,7 +664,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790330920.4831388,
+    "ts": 1790719741.3587372,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -673,7 +673,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790331432.2919214,
+    "ts": 1790720253.1675198,
     "level": "INFO",
     "source": "recovery",
     "action": "node_revived",
@@ -682,7 +682,7 @@
     "detail": "节点 dn2 恢复心跳，重新标记 LIVE"
    },
    {
-    "ts": 1790331460.1503985,
+    "ts": 1790720281.025997,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -691,7 +691,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790331846.3592224,
+    "ts": 1790720667.2348208,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -700,7 +700,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790332850.6535144,
+    "ts": 1790721671.5291128,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -709,7 +709,7 @@
     "detail": "DataNode dn3 注册 rack=rack-3"
    },
    {
-    "ts": 1790333597.4179962,
+    "ts": 1790722418.2935946,
     "level": "WARN",
     "source": "auth",
     "action": "login_failed",
@@ -718,7 +718,7 @@
     "detail": "用户名或口令错误"
    },
    {
-    "ts": 1790334342.5456536,
+    "ts": 1790723163.421252,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -727,7 +727,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790334356.7880514,
+    "ts": 1790723177.6636498,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -736,7 +736,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790335448.0483274,
+    "ts": 1790724268.9239259,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -745,7 +745,7 @@
     "detail": "DataNode dn3 注册 rack=rack-3"
    },
    {
-    "ts": 1790335947.377469,
+    "ts": 1790724768.2530675,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -754,7 +754,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790336254.0644588,
+    "ts": 1790725074.9400573,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -763,7 +763,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790337357.9514391,
+    "ts": 1790726178.8270376,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -772,7 +772,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790337777.7526903,
+    "ts": 1790726598.6282887,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -781,7 +781,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790338174.7795424,
+    "ts": 1790726995.6551409,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -790,7 +790,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790338828.2815633,
+    "ts": 1790727649.1571617,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -799,7 +799,7 @@
     "detail": "角色 viewer，来自 127.0.0.1"
    },
    {
-    "ts": 1790339861.535137,
+    "ts": 1790728682.4107354,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -808,7 +808,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790340001.4644415,
+    "ts": 1790728822.34004,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -817,7 +817,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790341741.4851148,
+    "ts": 1790730562.3607132,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -826,7 +826,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790341899.521048,
+    "ts": 1790730720.3966465,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -835,7 +835,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790342037.782937,
+    "ts": 1790730858.6585355,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -844,7 +844,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790342214.6641338,
+    "ts": 1790731035.5397322,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -853,7 +853,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790342257.9427204,
+    "ts": 1790731078.8183188,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -862,7 +862,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790342337.1879745,
+    "ts": 1790731158.063573,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -871,7 +871,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790342564.527158,
+    "ts": 1790731385.4027565,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -880,7 +880,7 @@
     "detail": "角色 viewer，来自 127.0.0.1"
    },
    {
-    "ts": 1790343246.9578562,
+    "ts": 1790732067.8334546,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -889,7 +889,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790343541.922675,
+    "ts": 1790732362.7982733,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -898,7 +898,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790344747.6554265,
+    "ts": 1790733568.531025,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -907,7 +907,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790344897.6141882,
+    "ts": 1790733718.4897866,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -916,7 +916,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790345586.7969735,
+    "ts": 1790734407.672572,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -925,7 +925,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790345598.5699677,
+    "ts": 1790734419.4455662,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -934,7 +934,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790346009.0178423,
+    "ts": 1790734829.8934407,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -943,7 +943,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790347188.9555886,
+    "ts": 1790736009.831187,
     "level": "WARN",
     "source": "auth",
     "action": "login_failed",
@@ -952,7 +952,7 @@
     "detail": "用户名或口令错误"
    },
    {
-    "ts": 1790347286.4155002,
+    "ts": 1790736107.2910986,
     "level": "INFO",
     "source": "gc",
     "action": "gc_blocks",
@@ -961,7 +961,7 @@
     "detail": "回收 4 个未引用块"
    },
    {
-    "ts": 1790349246.617325,
+    "ts": 1790738067.4929235,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -970,7 +970,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790349603.1136327,
+    "ts": 1790738423.989231,
     "level": "INFO",
     "source": "gc",
     "action": "gc_blocks",
@@ -979,7 +979,7 @@
     "detail": "回收 4 个未引用块"
    },
    {
-    "ts": 1790349743.1089082,
+    "ts": 1790738563.9845066,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -988,7 +988,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790351382.0948997,
+    "ts": 1790740202.970498,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -997,7 +997,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790351755.2600627,
+    "ts": 1790740576.1356611,
     "level": "INFO",
     "source": "namenode",
     "action": "start",
@@ -1006,7 +1006,7 @@
     "detail": "NameNode 启动完成"
    },
    {
-    "ts": 1790352926.2228515,
+    "ts": 1790741747.09845,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1015,7 +1015,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790354038.6106267,
+    "ts": 1790742859.4862251,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -1024,7 +1024,7 @@
     "detail": "角色 viewer，来自 127.0.0.1"
    },
    {
-    "ts": 1790357771.094701,
+    "ts": 1790746591.9702995,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1033,7 +1033,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790357913.5940204,
+    "ts": 1790746734.4696188,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -1042,7 +1042,7 @@
     "detail": "角色 operator，来自 127.0.0.1"
    },
    {
-    "ts": 1790358742.697991,
+    "ts": 1790747563.5735893,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -1051,7 +1051,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790360789.2262857,
+    "ts": 1790749610.1018841,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -1060,7 +1060,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790361419.4684398,
+    "ts": 1790750240.3440382,
     "level": "WARN",
     "source": "auth",
     "action": "login_failed",
@@ -1069,7 +1069,7 @@
     "detail": "用户名或口令错误"
    },
    {
-    "ts": 1790361943.6185057,
+    "ts": 1790750764.4941041,
     "level": "INFO",
     "source": "download",
     "action": "range",
@@ -1078,7 +1078,7 @@
     "detail": "Range 0-524287 由 dn1 服务"
    },
    {
-    "ts": 1790363038.704768,
+    "ts": 1790751859.5803664,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -1087,7 +1087,7 @@
     "detail": "创建分支 feature-ui"
    },
    {
-    "ts": 1790364450.691658,
+    "ts": 1790753271.5672565,
     "level": "INFO",
     "source": "recovery",
     "action": "node_revived",
@@ -1096,7 +1096,7 @@
     "detail": "节点 dn2 恢复心跳，重新标记 LIVE"
    },
    {
-    "ts": 1790364574.800584,
+    "ts": 1790753395.6761825,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -1105,7 +1105,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790364963.9592726,
+    "ts": 1790753784.834871,
     "level": "INFO",
     "source": "recovery",
     "action": "node_revived",
@@ -1114,7 +1114,7 @@
     "detail": "节点 dn2 恢复心跳，重新标记 LIVE"
    },
    {
-    "ts": 1790365298.369063,
+    "ts": 1790754119.2446613,
     "level": "ERROR",
     "source": "block",
     "action": "corrupt",
@@ -1123,7 +1123,7 @@
     "detail": "巡检发现校验和不匹配"
    },
    {
-    "ts": 1790368769.3415816,
+    "ts": 1790757590.21718,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1132,7 +1132,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790370187.799489,
+    "ts": 1790759008.6750875,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -1141,7 +1141,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790371918.5701516,
+    "ts": 1790760739.44575,
     "level": "INFO",
     "source": "gc",
     "action": "gc_blocks",
@@ -1150,7 +1150,7 @@
     "detail": "回收 4 个未引用块"
    },
    {
-    "ts": 1790375567.0486214,
+    "ts": 1790764387.9242198,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -1159,7 +1159,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790378769.8530116,
+    "ts": 1790767590.72861,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -1168,7 +1168,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790380612.3043916,
+    "ts": 1790769433.17999,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -1177,7 +1177,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790381845.3925118,
+    "ts": 1790770666.2681103,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1186,7 +1186,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790383193.7817044,
+    "ts": 1790772014.6573029,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1195,7 +1195,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790384009.56427,
+    "ts": 1790772830.4398685,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -1204,7 +1204,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790384120.0188425,
+    "ts": 1790772940.8211467,
     "level": "INFO",
     "source": "namenode",
     "action": "start",
@@ -1213,7 +1213,7 @@
     "detail": "NameNode 启动 @ 127.0.0.1:8020"
    },
    {
-    "ts": 1790384121.5210917,
+    "ts": 1790772942.3235412,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1222,7 +1222,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790384121.5228243,
+    "ts": 1790772942.3269913,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1231,7 +1231,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790384121.5253747,
+    "ts": 1790772942.3291554,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1240,7 +1240,7 @@
     "detail": "DataNode dn3 注册 rack=rack-3"
    },
    {
-    "ts": 1790384123.0343354,
+    "ts": 1790772943.83947,
     "level": "DEBUG",
     "source": "sync",
     "action": "doc_synced",
@@ -1249,7 +1249,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 2}"
    },
    {
-    "ts": 1790384123.0362895,
+    "ts": 1790772943.8406682,
     "level": "DEBUG",
     "source": "sync",
     "action": "doc_synced",
@@ -1258,7 +1258,7 @@
     "detail": "dn2: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790384123.0367422,
+    "ts": 1790772943.841241,
     "level": "DEBUG",
     "source": "sync",
     "action": "doc_synced",
@@ -1267,25 +1267,25 @@
     "detail": "dn3: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790384123.6494014,
+    "ts": 1790772944.4964557,
     "level": "INFO",
     "source": "version",
     "action": "commit",
-    "target": "main:c_5cf329f8",
+    "target": "main:c_0e905b28",
     "user": "admin",
     "detail": "提交 'init: 初始化仓库（文档/代码/数据/图片）'：15 个文件变更"
    },
    {
-    "ts": 1790384123.698788,
+    "ts": 1790772944.5487778,
     "level": "INFO",
     "source": "version",
     "action": "commit",
-    "target": "main:c_262b356a",
+    "target": "main:c_840ba999",
     "user": "admin",
     "detail": "提交 'feat: readme 修订 + utils 增加 retry 助手'：2 个文件变更"
    },
    {
-    "ts": 1790384123.7005236,
+    "ts": 1790772944.5507905,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
@@ -1294,7 +1294,7 @@
     "detail": "创建分支 feature-ui（起点 main）"
    },
    {
-    "ts": 1790384123.7043927,
+    "ts": 1790772944.5551631,
     "level": "INFO",
     "source": "version",
     "action": "checkout",
@@ -1303,25 +1303,25 @@
     "detail": "检出分支 feature-ui（物化 15 个文件）"
    },
    {
-    "ts": 1790384123.7550664,
+    "ts": 1790772944.6105459,
     "level": "INFO",
     "source": "version",
     "action": "commit",
-    "target": "feature-ui:c_099f841c",
+    "target": "feature-ui:c_636cd534",
     "user": "alice",
     "detail": "提交 'feature(ui): 暗色主题变量 + 会议纪要（分支侧修改）'：2 个文件变更"
    },
    {
-    "ts": 1790384123.7571838,
+    "ts": 1790772944.6129572,
     "level": "INFO",
     "source": "version",
     "action": "branch_create",
     "target": "release-1.0",
     "user": "admin",
-    "detail": "创建分支 release-1.0（起点 c_262b356a31ebe3b8）"
+    "detail": "创建分支 release-1.0（起点 c_840ba999f7e9334c）"
    },
    {
-    "ts": 1790384123.7631516,
+    "ts": 1790772944.6197405,
     "level": "INFO",
     "source": "version",
     "action": "checkout",
@@ -1330,34 +1330,79 @@
     "detail": "检出分支 main（物化 15 个文件）"
    },
    {
-    "ts": 1790384123.8139331,
+    "ts": 1790772944.672147,
     "level": "INFO",
     "source": "version",
     "action": "commit",
-    "target": "main:c_2c210371",
+    "target": "main:c_bb0bd116",
     "user": "admin",
     "detail": "提交 'docs: 会议纪要更新（main 侧）+ 路线图'：2 个文件变更"
    },
    {
-    "ts": 1790384123.845345,
+    "ts": 1790772944.705151,
     "level": "INFO",
     "source": "version",
     "action": "commit",
-    "target": "main:c_be57b9d3",
+    "target": "main:c_adc787b7",
     "user": "bob",
     "detail": "提交 'chore: 临时草稿'：1 个文件变更"
    },
    {
-    "ts": 1790384123.8800051,
+    "ts": 1790772944.746374,
     "level": "INFO",
     "source": "version",
     "action": "commit",
-    "target": "main:c_5de752ec",
+    "target": "main:c_7e3b6b1f",
     "user": "bob",
     "detail": "提交 'chore: 清理临时草稿（移入回收站）'：1 个文件变更"
    },
    {
-    "ts": 1790385176.340293,
+    "ts": 1790772944.7571642,
+    "level": "INFO",
+    "source": "lifecycle",
+    "action": "rule_create",
+    "target": "lc_410e8d620b9c",
+    "user": "admin",
+    "detail": "归档冷数据 @ /finance 14days 按最近访问 priority=150"
+   },
+   {
+    "ts": 1790772944.758478,
+    "level": "INFO",
+    "source": "lifecycle",
+    "action": "rule_create",
+    "target": "lc_f473ab4a8280",
+    "user": "admin",
+    "detail": "归档冷数据 @ /data 30days 按最近访问 priority=120"
+   },
+   {
+    "ts": 1790772944.7597756,
+    "level": "INFO",
+    "source": "lifecycle",
+    "action": "rule_create",
+    "target": "lc_c018e430b34e",
+    "user": "admin",
+    "detail": "移入回收站 @ /logs 21days 按最近访问 priority=120"
+   },
+   {
+    "ts": 1790772944.7611105,
+    "level": "INFO",
+    "source": "lifecycle",
+    "action": "rule_create",
+    "target": "lc_cc574a00e7d2",
+    "user": "admin",
+    "detail": "归档冷数据 @ / 60days 按最近访问 priority=50"
+   },
+   {
+    "ts": 1790772944.7625017,
+    "level": "INFO",
+    "source": "lifecycle",
+    "action": "rule_create",
+    "target": "lc_04ec2660eec1",
+    "user": "admin",
+    "detail": "移入回收站 @ / 90days 按最近访问 priority=50"
+   },
+   {
+    "ts": 1790773997.2158914,
     "level": "INFO",
     "source": "namenode",
     "action": "start",
@@ -1366,7 +1411,7 @@
     "detail": "NameNode 启动完成"
    },
    {
-    "ts": 1790386560.8966348,
+    "ts": 1790775381.7722332,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1375,7 +1420,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790387199.7378707,
+    "ts": 1790776020.6134691,
     "level": "INFO",
     "source": "recovery",
     "action": "node_revived",
@@ -1384,7 +1429,7 @@
     "detail": "节点 dn2 恢复心跳，重新标记 LIVE"
    },
    {
-    "ts": 1790387412.8622315,
+    "ts": 1790776233.73783,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -1393,7 +1438,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790389802.1904645,
+    "ts": 1790778623.066063,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -1402,7 +1447,7 @@
     "detail": "角色 viewer，来自 127.0.0.1"
    },
    {
-    "ts": 1790391666.5159116,
+    "ts": 1790780487.39151,
     "level": "ERROR",
     "source": "recovery",
     "action": "node_dead",
@@ -1411,7 +1456,7 @@
     "detail": "心跳超时，判定 DEAD；启动副本恢复"
    },
    {
-    "ts": 1790393458.2348008,
+    "ts": 1790782279.1103992,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -1420,7 +1465,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790394042.6457026,
+    "ts": 1790782863.521301,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -1429,7 +1474,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790396662.6950696,
+    "ts": 1790785483.570668,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1438,7 +1483,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790396746.3896565,
+    "ts": 1790785567.265255,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1447,7 +1492,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790401181.1459227,
+    "ts": 1790790002.021521,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -1456,7 +1501,7 @@
     "detail": "角色 viewer，来自 127.0.0.1"
    },
    {
-    "ts": 1790401297.7388637,
+    "ts": 1790790118.6144621,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1465,7 +1510,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790402007.61172,
+    "ts": 1790790828.4873185,
     "level": "INFO",
     "source": "version",
     "action": "commit",
@@ -1474,7 +1519,7 @@
     "detail": "提交 'init: 初始化仓库'"
    },
    {
-    "ts": 1790402216.7263134,
+    "ts": 1790791037.6019118,
     "level": "WARN",
     "source": "block",
     "action": "read_failover",
@@ -1483,7 +1528,7 @@
     "detail": "副本 dn2 读取失败，切换下一副本"
    },
    {
-    "ts": 1790403142.024791,
+    "ts": 1790791962.9003894,
     "level": "INFO",
     "source": "sync",
     "action": "doc_synced",
@@ -1492,7 +1537,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790404405.9911878,
+    "ts": 1790793226.8667862,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1501,7 +1546,7 @@
     "detail": "DataNode dn1 注册 rack=rack-1"
    },
    {
-    "ts": 1790406051.7108366,
+    "ts": 1790794872.586435,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -1510,7 +1555,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790406726.2871294,
+    "ts": 1790795547.1627278,
     "level": "INFO",
     "source": "upload",
     "action": "complete",
@@ -1519,7 +1564,7 @@
     "detail": "159744 字节 / 1 分片 / 3 块"
    },
    {
-    "ts": 1790406943.5914657,
+    "ts": 1790795764.4670641,
     "level": "INFO",
     "source": "recovery",
     "action": "node_revived",
@@ -1528,7 +1573,7 @@
     "detail": "节点 dn2 恢复心跳，重新标记 LIVE"
    },
    {
-    "ts": 1790409421.9970047,
+    "ts": 1790798242.8726032,
     "level": "INFO",
     "source": "fs",
     "action": "trash_restore",
@@ -1537,7 +1582,7 @@
     "detail": "恢复条目"
    },
    {
-    "ts": 1790413140.6206594,
+    "ts": 1790801961.4962578,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1546,7 +1591,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790414223.2101967,
+    "ts": 1790803044.0857952,
     "level": "INFO",
     "source": "gc",
     "action": "gc_blocks",
@@ -1555,7 +1600,7 @@
     "detail": "回收 4 个未引用块"
    },
    {
-    "ts": 1790417687.565149,
+    "ts": 1790806508.4407475,
     "level": "INFO",
     "source": "namenode",
     "action": "node_register",
@@ -1564,7 +1609,7 @@
     "detail": "DataNode dn2 注册 rack=rack-2"
    },
    {
-    "ts": 1790420080.7403977,
+    "ts": 1790808901.6159961,
     "level": "INFO",
     "source": "namenode",
     "action": "start",
@@ -1573,7 +1618,7 @@
     "detail": "NameNode 启动完成"
    },
    {
-    "ts": 1790420096.0294006,
+    "ts": 1790808916.904999,
     "level": "WARN",
     "source": "auth",
     "action": "login_failed",
@@ -1582,7 +1627,7 @@
     "detail": "用户名或口令错误"
    },
    {
-    "ts": 1790424448.9915924,
+    "ts": 1790813269.8671908,
     "level": "INFO",
     "source": "gc",
     "action": "gc_blocks",
@@ -1591,7 +1636,7 @@
     "detail": "回收 4 个未引用块"
    },
    {
-    "ts": 1790436641.6302152,
+    "ts": 1790825462.5058136,
     "level": "WARN",
     "source": "fs",
     "action": "delete",
@@ -1600,7 +1645,7 @@
     "detail": "移入回收站（7 天后过期）"
    },
    {
-    "ts": 1790384125.157803,
+    "ts": 1790772946.0058887,
     "level": "DEBUG",
     "source": "sync",
     "action": "doc_synced",
@@ -1609,7 +1654,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 3}"
    },
    {
-    "ts": 1790384126.6584907,
+    "ts": 1790772947.5124185,
     "level": "DEBUG",
     "source": "sync",
     "action": "doc_synced",
@@ -1618,7 +1663,7 @@
     "detail": "dn3: relation=applied vv={'namenode': 4}"
    },
    {
-    "ts": 1790384126.660279,
+    "ts": 1790772947.512872,
     "level": "DEBUG",
     "source": "sync",
     "action": "doc_synced",
@@ -1627,7 +1672,7 @@
     "detail": "dn2: relation=applied vv={'namenode': 4}"
    },
    {
-    "ts": 1790384126.6635678,
+    "ts": 1790772947.514575,
     "level": "DEBUG",
     "source": "sync",
     "action": "doc_synced",
@@ -1636,7 +1681,7 @@
     "detail": "dn1: relation=applied vv={'namenode': 4}"
    },
    {
-    "ts": 1790384156.8723004,
+    "ts": 1790772984.932141,
     "level": "INFO",
     "source": "auth",
     "action": "login",
@@ -1645,778 +1690,31 @@
     "detail": "角色 admin，来自 127.0.0.1"
    },
    {
-    "ts": 1790384156.9090579,
+    "ts": 1790772985.0100265,
+    "level": "INFO",
+    "source": "lifecycle",
+    "action": "block_evacuate",
+    "target": "blk_960a0b496800",
+    "user": "system",
+    "detail": "下沉冷归档库（原热副本 dn3,dn2,dn1）"
+   },
+   {
+    "ts": 1790772985.018518,
     "level": "WARN",
-    "source": "sim",
-    "action": "kill",
-    "target": "dn3",
-    "user": "admin",
-    "detail": "手动故障演练"
-   },
-   {
-    "ts": 1790384157.0824242,
-    "level": "WARN",
-    "source": "sim",
-    "action": "kill_node",
-    "target": "dn3",
-    "user": "admin",
-    "detail": "故障演练：手动杀死节点"
-   },
-   {
-    "ts": 1790384163.0209613,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn3",
+    "source": "lifecycle",
+    "action": "archive",
+    "target": "/finance/payroll-q3.csv",
     "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
+    "detail": "规则 财务数据提前归档 触发：1 块下沉冷数据，0 块共享保留"
    },
    {
-    "ts": 1790384163.0214844,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn3",
-    "user": "system",
-    "detail": "故障扫描：75 个块受影响"
-   },
-   {
-    "ts": 1790384165.7317066,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn2: relation=applied vv={'namenode': 5}"
-   },
-   {
-    "ts": 1790384165.733489,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 5}"
-   },
-   {
-    "ts": 1790384166.0870562,
+    "ts": 1790772985.1963475,
     "level": "INFO",
-    "source": "sim",
-    "action": "revive_node",
-    "target": "dn3",
-    "user": "admin",
-    "detail": "故障演练：节点复活"
-   },
-   {
-    "ts": 1790384167.5878572,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn3",
+    "source": "lifecycle",
+    "action": "restore",
+    "target": "/finance/payroll-q3.csv",
     "user": "system",
-    "detail": "节点 dn3 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790384168.0956252,
-    "level": "INFO",
-    "source": "sim",
-    "action": "revive_node",
-    "target": "dn3",
-    "user": "admin",
-    "detail": "故障演练：节点复活"
-   },
-   {
-    "ts": 1790384168.1175888,
-    "level": "INFO",
-    "source": "version",
-    "action": "merge_request",
-    "target": "feature-ui",
-    "user": "admin",
-    "detail": "source head c_099f84"
-   },
-   {
-    "ts": 1790384168.1548288,
-    "level": "WARN",
-    "source": "version",
-    "action": "merge",
-    "target": "feature-ui -> main",
-    "user": "admin",
-    "detail": "合并完成：2 文件变更，1 处冲突"
-   },
-   {
-    "ts": 1790384168.1593916,
-    "level": "INFO",
-    "source": "version",
-    "action": "merge_request",
-    "target": "release-1.0",
-    "user": "admin",
-    "detail": "source head c_262b35"
-   },
-   {
-    "ts": 1790384168.168256,
-    "level": "INFO",
-    "source": "version",
-    "action": "merge_ff",
-    "target": "release-1.0 -> main",
-    "user": "admin",
-    "detail": "快进合并"
-   },
-   {
-    "ts": 1790384169.0981202,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn3: relation=applied vv={'namenode': 5}"
-   },
-   {
-    "ts": 1790384220.3449738,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384220.856209,
-    "level": "WARN",
-    "source": "sim",
-    "action": "kill",
-    "target": "dn3",
-    "user": "admin",
-    "detail": "手动故障演练"
-   },
-   {
-    "ts": 1790384220.9527135,
-    "level": "WARN",
-    "source": "sim",
-    "action": "kill_node",
-    "target": "dn3",
-    "user": "admin",
-    "detail": "故障演练：手动杀死节点"
-   },
-   {
-    "ts": 1790384227.0318334,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn3",
-    "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
-   },
-   {
-    "ts": 1790384227.032378,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn3",
-    "user": "system",
-    "detail": "故障扫描：76 个块受影响"
-   },
-   {
-    "ts": 1790384228.8560934,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 6}"
-   },
-   {
-    "ts": 1790384228.856742,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn2: relation=applied vv={'namenode': 6}"
-   },
-   {
-    "ts": 1790384228.9616392,
-    "level": "INFO",
-    "source": "sim",
-    "action": "revive_node",
-    "target": "dn3",
-    "user": "admin",
-    "detail": "故障演练：节点复活"
-   },
-   {
-    "ts": 1790384230.4622884,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn3",
-    "user": "system",
-    "detail": "节点 dn3 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790384231.9726055,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn3: relation=applied vv={'namenode': 6}"
-   },
-   {
-    "ts": 1790384262.7494795,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384262.7619252,
-    "level": "WARN",
-    "source": "sim",
-    "action": "kill",
-    "target": "dn2",
-    "user": "admin",
-    "detail": "手动故障演练"
-   },
-   {
-    "ts": 1790384262.955929,
-    "level": "WARN",
-    "source": "sim",
-    "action": "kill_node",
-    "target": "dn2",
-    "user": "admin",
-    "detail": "故障演练：手动杀死节点"
-   },
-   {
-    "ts": 1790384268.0389915,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn2",
-    "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
-   },
-   {
-    "ts": 1790384268.039506,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn2",
-    "user": "system",
-    "detail": "故障扫描：76 个块受影响"
-   },
-   {
-    "ts": 1790384268.9608512,
-    "level": "INFO",
-    "source": "sim",
-    "action": "revive_node",
-    "target": "dn2",
-    "user": "admin",
-    "detail": "故障演练：节点复活"
-   },
-   {
-    "ts": 1790384270.4618812,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn2",
-    "user": "system",
-    "detail": "节点 dn2 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790384270.9317439,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 7}"
-   },
-   {
-    "ts": 1790384271.0211785,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn3: relation=applied vv={'namenode': 7}"
-   },
-   {
-    "ts": 1790384271.9740543,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn2: relation=applied vv={'namenode': 7}"
-   },
-   {
-    "ts": 1790384286.8599706,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384287.6878061,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384288.4950109,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384289.2551057,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384289.9970815,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384290.8150718,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384291.9987838,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384292.752793,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384293.4997375,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384294.2684512,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790384295.1002314,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790401907.8617728,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn2",
-    "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
-   },
-   {
-    "ts": 1790401907.8623111,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn2",
-    "user": "system",
-    "detail": "故障扫描：76 个块受影响"
-   },
-   {
-    "ts": 1790401907.8640814,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn3",
-    "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
-   },
-   {
-    "ts": 1790401907.8644876,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn3",
-    "user": "system",
-    "detail": "故障扫描：76 个块受影响"
-   },
-   {
-    "ts": 1790401907.9973733,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn3",
-    "user": "system",
-    "detail": "节点 dn3 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790401907.9983745,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn2",
-    "user": "system",
-    "detail": "节点 dn2 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790401909.5115702,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn3: relation=applied vv={'namenode': 9}"
-   },
-   {
-    "ts": 1790401909.513229,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn2: relation=applied vv={'namenode': 9}"
-   },
-   {
-    "ts": 1790401910.7953646,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 9}"
-   },
-   {
-    "ts": 1790409364.6130028,
-    "level": "INFO",
-    "source": "fs",
-    "action": "trash_expire",
-    "target": "",
-    "user": "system",
-    "detail": "回收站过期清理 2 项（单位 hours），释放 2 个块引用"
-   },
-   {
-    "ts": 1790409364.9055345,
-    "level": "INFO",
-    "source": "gc",
-    "action": "gc_blocks",
-    "target": "",
-    "user": "system",
-    "detail": "回收 1 个未引用块"
-   },
-   {
-    "ts": 1790422733.2705789,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn1",
-    "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
-   },
-   {
-    "ts": 1790422733.2711344,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn1",
-    "user": "system",
-    "detail": "故障扫描：75 个块受影响"
-   },
-   {
-    "ts": 1790422733.2726026,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn2",
-    "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
-   },
-   {
-    "ts": 1790422733.2730196,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn2",
-    "user": "system",
-    "detail": "故障扫描：75 个块受影响"
-   },
-   {
-    "ts": 1790422733.2749813,
-    "level": "ERROR",
-    "source": "recovery",
-    "action": "node_dead",
-    "target": "dn3",
-    "user": "system",
-    "detail": "心跳超时（>6.0s），判定 DEAD；启动副本恢复"
-   },
-   {
-    "ts": 1790422733.2752914,
-    "level": "WARN",
-    "source": "recovery",
-    "action": "failure_scan",
-    "target": "dn3",
-    "user": "system",
-    "detail": "故障扫描：75 个块受影响"
-   },
-   {
-    "ts": 1790422733.384916,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn1",
-    "user": "system",
-    "detail": "节点 dn1 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790422733.3858283,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn2",
-    "user": "system",
-    "detail": "节点 dn2 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790422734.3235812,
-    "level": "INFO",
-    "source": "recovery",
-    "action": "node_revived",
-    "target": "dn3",
-    "user": "system",
-    "detail": "节点 dn3 恢复心跳，重新标记 LIVE，要求全量块汇报"
-   },
-   {
-    "ts": 1790422734.9042022,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn2: relation=applied vv={'namenode': 12}"
-   },
-   {
-    "ts": 1790422734.9051468,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 12}"
-   },
-   {
-    "ts": 1790422735.8337567,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn3: relation=applied vv={'namenode': 12}"
-   },
-   {
-    "ts": 1790427101.6973374,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "start",
-    "target": "namenode",
-    "user": "system",
-    "detail": "NameNode 启动 @ 127.0.0.1:8020"
-   },
-   {
-    "ts": 1790427103.2006664,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "node_register",
-    "target": "dn1",
-    "user": "system",
-    "detail": "DataNode dn1 注册 rack=rack-1"
-   },
-   {
-    "ts": 1790427103.2029622,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "node_register",
-    "target": "dn2",
-    "user": "system",
-    "detail": "DataNode dn2 注册 rack=rack-2"
-   },
-   {
-    "ts": 1790427103.2051666,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "node_register",
-    "target": "dn3",
-    "user": "system",
-    "detail": "DataNode dn3 注册 rack=rack-3"
-   },
-   {
-    "ts": 1790427104.7164109,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 14}"
-   },
-   {
-    "ts": 1790427104.718193,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn2: relation=applied vv={'namenode': 15}"
-   },
-   {
-    "ts": 1790427104.7187374,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn3: relation=applied vv={'namenode': 15}"
-   },
-   {
-    "ts": 1790427106.2251656,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 15}"
-   },
-   {
-    "ts": 1790427135.739519,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "start",
-    "target": "namenode",
-    "user": "system",
-    "detail": "NameNode 启动 @ 127.0.0.1:8020"
-   },
-   {
-    "ts": 1790427137.2429993,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "node_register",
-    "target": "dn1",
-    "user": "system",
-    "detail": "DataNode dn1 注册 rack=rack-1"
-   },
-   {
-    "ts": 1790427137.2451274,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "node_register",
-    "target": "dn2",
-    "user": "system",
-    "detail": "DataNode dn2 注册 rack=rack-2"
-   },
-   {
-    "ts": 1790427137.247458,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "node_register",
-    "target": "dn3",
-    "user": "system",
-    "detail": "DataNode dn3 注册 rack=rack-3"
-   },
-   {
-    "ts": 1790427138.6184902,
-    "level": "INFO",
-    "source": "auth",
-    "action": "login",
-    "target": "admin",
-    "user": "admin",
-    "detail": "角色 admin，来自 127.0.0.1"
-   },
-   {
-    "ts": 1790427138.75854,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 17}"
-   },
-   {
-    "ts": 1790427138.7615802,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn2: relation=applied vv={'namenode': 18}"
-   },
-   {
-    "ts": 1790427138.7631562,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn3: relation=applied vv={'namenode': 18}"
-   },
-   {
-    "ts": 1790427140.2702053,
-    "level": "DEBUG",
-    "source": "sync",
-    "action": "doc_synced",
-    "target": "cluster",
-    "user": "system",
-    "detail": "dn1: relation=applied vv={'namenode': 18}"
-   },
-   {
-    "ts": 1790427259.4392478,
-    "level": "INFO",
-    "source": "namenode",
-    "action": "start",
-    "target": "namenode",
-    "user": "system",
-    "detail": "NameNode 启动 @ 127.0.0.1:8020"
+    "detail": "透明取回完成（1 块）"
    }
   ]
  }

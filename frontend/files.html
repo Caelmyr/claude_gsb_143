@@ -67,7 +67,7 @@
 <script>
 "use strict";
 const { api, esc, fmtBytes, fmtTs, fmtAgo, toast, modal, confirmDlg, promptDlg,
-        fileIcon, thumbUrl, healthBadge, getToken } = DFSVS;
+        fileIcon, thumbUrl, healthBadge, tierBadge, getToken } = DFSVS;
 
 let currentPath = DFSVS.qs("path", "/");
 let selected = null;      // 当前选中条目
@@ -154,7 +154,9 @@ function renderGrid(items) {
       <div class="thumb">
         ${it.thumb ? `<img loading="lazy" src="${esc(thumbUrl(it.path))}" alt="" onerror="this.parentElement.textContent='🖼'">` : fileIcon(it)}
       </div>
-      <div class="fname">${esc(it.name)}</div>
+      <div class="fname">${esc(it.name)}
+        ${it.type === "file" && it.tier !== "hot" ? `<span style="margin-left:4px">${tierBadge(it.tier)}</span>` : ""}
+      </div>
       <div class="fmeta">${it.type === "dir" ? (it.children + " 项") : fmtBytes(it.size)} · ${fmtAgo(it.modified_at)}</div>
     </div>`).join("");
   grid.querySelectorAll(".fcard").forEach(el => {
@@ -186,11 +188,15 @@ async function selectEntry(it) {
   const body = document.getElementById("detail-body");
   body.innerHTML = `<div class="empty small">加载中 …</div>`;
   try {
-    const [st, blocks] = await Promise.all([
+    const [st, blocks, lc] = await Promise.all([
       api("GET", "/api/fs/stat?path=" + encodeURIComponent(it.path)),
       api("GET", "/api/file/blocks?path=" + encodeURIComponent(it.path)),
+      s.type === "dir" ? Promise.resolve(null)
+        : api("GET", "/api/lifecycle/file?path=" + encodeURIComponent(it.path))
+          .catch(() => null),
     ]);
     const s = st.stat;
+    const coldN = blocks.blocks.filter(b => b.tier === "cold").length;
     body.innerHTML = `
       <div class="split-view">
         <div class="side grow">
@@ -198,6 +204,8 @@ async function selectEntry(it) {
             <span class="k">路径</span><span class="v">${esc(s.path)}</span>
             <span class="k">类型</span><span class="v">${s.type === "dir" ? "目录" : esc(s.mime || "文件")}</span>
             <span class="k">大小</span><span class="v">${fmtBytes(s.size)}（${s.size} B）</span>
+            <span class="k">存储层</span><span class="v">${tierBadge(s.tier) || '<span class="badge ok plain">热数据</span>'}
+              ${coldN ? ` <span class="small muted">${coldN}/${blocks.blocks.length} 块在冷库</span>` : ""}</span>
             <span class="k">内容哈希</span><span class="v">${esc((s.content_hash || "-").slice(0, 24))}…</span>
             <span class="k">属主 / 模式</span><span class="v">${esc(s.owner)} · ${esc(s.mode)}</span>
             <span class="k">创建 / 修改</span><span class="v">${fmtTs(s.created_at)} · ${fmtTs(s.modified_at)}</span>
@@ -209,29 +217,32 @@ async function selectEntry(it) {
             <button class="btn sm" id="d-download">⇩ 下载</button>
             <button class="btn sm" id="d-rename">✎ 重命名</button>
             <button class="btn sm" id="d-history">⑂ 版本历史</button>
+            ${s.tier !== "hot" ? `<button class="btn sm ok" id="d-restore">⟳ 手动取回</button>` : ""}
             <button class="btn sm danger" id="d-delete">🗑 删除</button>
           </div>
         </div>
         <div class="side grow">
           <div class="small muted" style="margin-bottom:6px">
-            块与副本（${blocks.blocks.length} 块 · 逻辑 ${fmtBytes(blocks.size)}）</div>
-          <div class="table-wrap scroll-y" style="max-height:300px">
+            块与副本（${blocks.blocks.length} 块 · 逻辑 ${fmtBytes(blocks.size)}）${coldN ? " · 冷块访问时自动取回" : ""}</div>
+          <div class="table-wrap scroll-y" style="max-height:220px">
           <table class="tbl">
-            <thead><tr><th>块</th><th class="right">大小</th><th>genstamp</th><th>健康</th><th>副本（节点:状态）</th></tr></thead>
+            <thead><tr><th>块</th><th class="right">大小</th><th>层</th><th>genstamp</th><th>健康</th><th>副本</th></tr></thead>
             <tbody>
               ${blocks.blocks.map(b => b.missing ? `
-                <tr><td class="mono">${esc(b.id.slice(-8))}</td><td colspan="4"><span class="badge bad">块丢失</span></td></tr>` : `
+                <tr><td class="mono">${esc(b.id.slice(-8))}</td><td colspan="5"><span class="badge bad">块丢失</span></td></tr>` : `
                 <tr>
                   <td class="mono" title="${esc(b.id)}\nsha256 ${esc(b.checksum)}…">${esc(b.short)}</td>
                   <td class="num right">${fmtBytes(b.size)}</td>
+                  <td>${b.tier === "cold" ? tierBadge("cold") : '<span class="small muted">热</span>'}</td>
                   <td class="num">#${b.genstamp}</td>
                   <td>${healthBadge(b.status)} <span class="mono small">${b.live}/${b.desired}</span></td>
                   <td>${b.replicas.map(r => `
                     <span class="badge plain ${r.state === "ok" && r.live ? "ok" : r.state === "corrupt" ? "bad" : "warn"}"
-                          title="genstamp #${r.genstamp} · ${r.rack || ""}">${esc(r.node)}${r.state !== "ok" ? ":" + esc(r.state) : ""}</span>`).join(" ") || '<span class="muted">无</span>'}</td>
+                          title="genstamp #${r.genstamp} · ${r.rack || ""}">${esc(r.node)}${r.state !== "ok" ? ":" + esc(r.state) : ""}</span>`).join(" ") || (b.tier === "cold" ? '<span class="small muted">在 NameNode 冷库</span>' : '<span class="muted">无</span>')}</td>
                 </tr>`).join("")}
             </tbody>
           </table></div>
+          ${lc ? renderLifecycle(lc) : ""}
         </div>
       </div>`;
     document.getElementById("d-preview").onclick = () => previewFile(s);
@@ -241,9 +252,52 @@ async function selectEntry(it) {
     document.getElementById("d-delete").onclick = () => deleteEntry(s);
     document.getElementById("d-history").onclick = () =>
       location.href = "versions.html?path=" + encodeURIComponent(s.path);
+    const btnR = document.getElementById("d-restore");
+    if (btnR) btnR.onclick = async () => {
+      btnR.disabled = true; btnR.textContent = "⟳ 取回中…";
+      try {
+        const r = await api("POST", "/api/lifecycle/restore", { path: s.path });
+        toast(`已取回 ${r.restored || 0} 个冷块，文件恢复热数据层`, "ok");
+        selectEntry(it);
+      } catch (e) { toast("取回失败：" + e.message, "bad"); btnR.disabled = false; }
+    };
   } catch (e) {
     body.innerHTML = `<div class="empty small">加载详情失败：${esc(e.message)}</div>`;
   }
+}
+
+function renderLifecycle(lc) {
+  const rows = Object.entries(lc.actions || {}).map(([act, a]) => {
+    const w = a.winner;
+    const sh = (a.shadowed || []).map(s =>
+      `<span class="chip dim" title="被更高优先级规则覆盖">⊖ ${esc(s.rule_name)} #${s.priority}</span>`).join(" ");
+    return `<tr>
+      <td class="act-${act}">${act === "archive" ? "❄ 归档" : "🗑 回收站"}</td>
+      <td><span class="badge acc plain">${esc(w.rule_name)} #${w.priority}</span></td>
+      <td class="small">${esc(w.age_base_label)}</td>
+      <td class="small mono">${DFSVS.fmtAge(w.age_seconds)} / ${DFSVS.fmtAge(w.threshold_seconds)}</td>
+      <td>${w.due ? '<span class="badge bad plain">已到期</span>' : '<span class="badge ok plain">未到期</span>'}</td>
+      <td class="small">${sh || '<span class="muted">—</span>'}</td>
+    </tr>`;
+  }).join("");
+  const hist = (lc.history || []).slice(0, 6).map(h =>
+    `<div class="small">· ${fmtTs(h.ts)} <b class="st-${esc(h.status)}">${esc(h.status)}</b>
+      ${h.rule_name ? "· " + esc(h.rule_name) : ""} · ${esc((h.detail || "").slice(0, 80))}</div>`
+  ).join("");
+  const pend = (lc.pending || []).map(p =>
+    `<div class="small" style="color:var(--warn)">⏳ ${p.action === "archive" ? "归档" : "移入回收站"}
+      宽限中（规则 ${esc(p.rule_name)}），可在
+      <a href="lifecycle.html">生命周期页</a>撤销</div>`).join("");
+  return `
+    <hr class="hr" style="margin:12px 0 8px">
+    <div class="small muted" style="margin-bottom:6px">生命周期（规则命中与执行留痕）</div>
+    <table class="tbl" style="margin-bottom:8px">
+      <thead><tr><th>动作</th><th>生效规则</th><th>基准</th><th>年龄/阈值</th><th>结论</th><th>被覆盖规则</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" class="small muted">未命中任何规则</td></tr>`}</tbody>
+    </table>
+    ${pend}
+    ${hist ? `<div class="muted" style="margin-top:6px">${hist}</div>` : ""}
+    <a class="btn xs ghost" href="lifecycle.html" style="margin-top:6px">在生命周期页查看全部 →</a>`;
 }
 
 async function previewFile(it) {

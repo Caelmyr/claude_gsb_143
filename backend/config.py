@@ -89,6 +89,18 @@ META_FLUSH_INTERVAL = 2.0              # 脏元数据文档刷盘间隔（秒）
 TRASH_EXPIRE_CHECK_INTERVAL = 60.0     # 回收站过期清理检查间隔（秒）
 
 # ----------------------------------------------------------------------------
+# 生命周期（自动归档 / 自动回收站 / 撤销宽限 / 冷数据层）
+# ----------------------------------------------------------------------------
+LIFECYCLE_SCAN_INTERVAL = 20.0         # 规则扫描间隔（秒）
+LIFECYCLE_GRACE_SECONDS = 120.0        # 动作触发前的撤销宽限期（秒）
+LIFECYCLE_RESTORE_DELAY = 0.15         # 模拟冷数据取回耗时（秒/块，透明取回时用户可感知的"取回中"）
+COLD_VAULT_DIR = os.path.join(DATA_DIR, "cold")   # 冷归档块库（NameNode 托管）
+LIFECYCLE_HISTORY_CAP = 2000           # 生命周期执行历史上限
+LIFECYCLE_AGE_UNITS = ("seconds", "minutes", "hours", "days")
+LIFECYCLE_ACTIONS = ("archive", "trash")
+LIFECYCLE_AGE_BASES = ("atime", "mtime", "ctime")
+
+# ----------------------------------------------------------------------------
 # 元数据 JSON 文档 / 版本向量（难点五：多节点同步、原子写、版本向量）
 # ----------------------------------------------------------------------------
 # 元数据集中存储：每个文档一个 JSON 文件，原子写（tmp + fsync + os.replace）
@@ -100,6 +112,7 @@ META_DOCS = [
     "perms",       # 权限规则（ACL）
     "logs",        # 系统审计日志
     "recycle",     # 回收站条目
+    "lifecycle",   # 生命周期规则 / 待触发动作 / 执行历史 / 冷块清单
     "stats",       # 访问热度 / 容量历史 / 小时级吞吐
     "cluster",     # 集群注册表（NameNode 维护，向 DataNode 同步的文档）
 ]
@@ -180,7 +193,8 @@ LOG_MAX_ENTRIES = 5000                  # logs.json 中最多保留的条数
 LOG_LEVELS = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
 LOG_LEVEL_SEP = "|"                     # 日志级别多选过滤的分隔符
 LOG_SOURCES = ["namenode", "datanode", "api", "auth", "fs", "block", "version",
-               "recovery", "gc", "sync", "upload", "download", "sim"]
+               "recovery", "gc", "sync", "upload", "download", "sim",
+               "lifecycle"]
 
 # ----------------------------------------------------------------------------
 # 演示 / 模拟

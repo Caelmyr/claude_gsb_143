@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import config, diff_engine
 from .auth import AuthError
 from .filesystem import FsError
+from .lifecycle import LifecycleError
 from .namenode import MissingBlockError, NNError
 from .util import (content_range_value, decode_text, now, parse_range,
                    sha256_bytes, short_hash, to_rate_units)
@@ -379,6 +380,8 @@ def api_download(ctx):
         "Accept-Ranges": "bytes",
         "X-Served-By": ",".join(info["nodes"]),
         "X-Blocks-Touched": str(info["blocks_touched"]),
+        "X-Restored-Blocks": str(info.get("restored", 0)),
+        "X-From-Cold": "1" if info.get("from_cold") else "0",
         "Content-Disposition": f'attachment; filename="{os.path.basename(path)}"',
     }
     status = 206 if (start, start + len(data) - 1) != (0, size - 1) else 200
@@ -837,6 +840,102 @@ def api_recycle_empty(ctx):
 
 
 # ============================================================================
+# API: 生命周期（规则 / 预览 / 撤销 / 历史 / 冷归档取回）
+# ============================================================================
+
+@route("GET", "/api/lifecycle/rules")
+def api_lc_rules(ctx):
+    return {"rules": ctx.nn.lifecycle.list_rules(),
+            "grace_seconds": config.LIFECYCLE_GRACE_SECONDS,
+            "actions": config.LIFECYCLE_ACTIONS,
+            "age_bases": config.LIFECYCLE_AGE_BASES,
+            "age_units": config.LIFECYCLE_AGE_UNITS,
+            "stats": ctx.nn.lifecycle.stats()}
+
+
+@route("POST", "/api/lifecycle/rules", cap="admin")
+def api_lc_rule_create(ctx):
+    rule = ctx.nn.lifecycle.add_rule(ctx.json(), ctx.actor())
+    return {"ok": True, "rule": rule}
+
+
+@route("PUT", "/api/lifecycle/rules/<rule_id>", cap="admin")
+def api_lc_rule_update(ctx):
+    rule = ctx.nn.lifecycle.update_rule(ctx.params["rule_id"], ctx.json(),
+                                        ctx.actor())
+    return {"ok": True, "rule": rule}
+
+
+@route("DELETE", "/api/lifecycle/rules/<rule_id>", cap="admin")
+def api_lc_rule_delete(ctx):
+    ctx.nn.lifecycle.delete_rule(ctx.params["rule_id"], ctx.actor())
+    return {"ok": True}
+
+
+@route("POST", "/api/lifecycle/rules/<rule_id>/toggle", cap="admin")
+def api_lc_rule_toggle(ctx):
+    enabled = bool(ctx.json().get("enabled", True))
+    rule = ctx.nn.lifecycle.set_enabled(ctx.params["rule_id"], enabled,
+                                        ctx.actor())
+    return {"ok": True, "rule": rule}
+
+
+@route("GET", "/api/lifecycle/preview")
+def api_lc_preview(ctx):
+    scope = ctx.query.get("path") or None
+    limit = min(2000, ctx.q_int("limit", 500))
+    return ctx.nn.lifecycle.preview(scope, limit)
+
+
+@route("GET", "/api/lifecycle/pending")
+def api_lc_pending(ctx):
+    return ctx.nn.lifecycle.list_pending()
+
+
+@route("POST", "/api/lifecycle/pending/<pending_id>/cancel", cap="admin")
+def api_lc_pending_cancel(ctx):
+    note = (ctx.json().get("note") or "").strip()
+    return ctx.nn.lifecycle.cancel_pending(ctx.params["pending_id"],
+                                           ctx.actor(), note)
+
+
+@route("GET", "/api/lifecycle/history")
+def api_lc_history(ctx):
+    return ctx.nn.lifecycle.list_history(
+        path=ctx.query.get("path") or None,
+        rule_id=ctx.query.get("rule_id") or None,
+        action=ctx.query.get("action") or None,
+        status=ctx.query.get("status") or None,
+        limit=min(1000, ctx.q_int("limit", 200)))
+
+
+@route("GET", "/api/lifecycle/file")
+def api_lc_file(ctx):
+    path = ctx.query.get("path", "")
+    ctx.require_perm(path, "read")
+    return ctx.nn.lifecycle.file_lifecycle(path)
+
+
+@route("POST", "/api/lifecycle/scan", cap="admin")
+def api_lc_scan(ctx):
+    return {"ok": True, **ctx.nn.lifecycle.run_scan_now(ctx.actor())}
+
+
+@route("POST", "/api/lifecycle/archive_now", cap="admin")
+def api_lc_archive_now(ctx):
+    path = ctx.json().get("path", "")
+    ctx.require_perm(path, "admin")
+    return ctx.nn.lifecycle.archive_path_now(path, ctx.actor())
+
+
+@route("POST", "/api/lifecycle/restore", cap="admin")
+def api_lc_restore(ctx):
+    path = ctx.json().get("path", "")
+    ctx.require_perm(path, "read")
+    return ctx.nn.lifecycle.restore_path_now(path, ctx.actor())
+
+
+# ============================================================================
 # API: 系统信息
 # ============================================================================
 
@@ -1032,7 +1131,8 @@ class NameNodeHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(e)}, 403)
         except MissingBlockError as e:
             self._send_json({"error": str(e), "degraded": True}, 503)
-        except (FsError, NNError, VersionError, ValueError) as e:
+        except (FsError, NNError, VersionError, LifecycleError,
+                ValueError) as e:
             self._send_json({"error": str(e)}, 400)
         except Exception as e:  # noqa: BLE001
             nn.log_event("ERROR", "api", "unhandled", path, "system",

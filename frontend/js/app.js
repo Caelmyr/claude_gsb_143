@@ -200,6 +200,7 @@ const DFSVS = (() => {
     { group: "文件", items: [
       { href: "files.html", ico: "🗀", name: "文件浏览" },
       { href: "transfer.html", ico: "⇅", name: "上传下载" },
+      { href: "lifecycle.html", ico: "❄", name: "生命周期" },
       { href: "recycle.html", ico: "🗑", name: "回收站" },
     ]},
     { group: "版本", items: [
@@ -517,6 +518,21 @@ const DFSVS = (() => {
     return `<span class="badge dim">${esc(state)}</span>`;
   }
 
+  function tierBadge(tier) {
+    if (tier === "archived") return `<span class="badge info cold-badge" title="已归档冷数据层，访问时自动取回">❄ 冷归档</span>`;
+    if (tier === "restoring") return `<span class="badge warn cold-badge" title="正在从冷数据层取回">⟳ 取回中</span>`;
+    if (tier === "cold") return `<span class="badge info cold-badge">❄ 冷块</span>`;
+    return "";
+  }
+
+  function fmtAge(sec) {
+    sec = Math.max(0, sec || 0);
+    if (sec < 60) return sec.toFixed(0) + " 秒";
+    if (sec < 3600) return (sec / 60).toFixed(1) + " 分钟";
+    if (sec < 86400) return (sec / 3600).toFixed(1) + " 小时";
+    return (sec / 86400).toFixed(1) + " 天";
+  }
+
   function qs(name, def = "") {
     return new URLSearchParams(location.search).get(name) || def;
   }
@@ -526,7 +542,7 @@ const DFSVS = (() => {
     toast, modal, confirmDlg, promptDlg, showLoginModal, logout, ensureLogin,
     renderNav, renderUserChip, esc, fmtBytes, fmtTs, fmtAgo, fmtDur, fileIcon, poll,
     sha256Hex, svgDonut, svgBars, svgLine, sparkline, legend, PALETTE,
-    healthBadge, stateBadge, qs,
+    healthBadge, stateBadge, tierBadge, fmtAge, qs,
   };
 })();
 

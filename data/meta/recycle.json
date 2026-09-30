@@ -1,11 +1,48 @@
 {
  "doc": "recycle",
  "vv": {
-  "namenode": 4
+  "namenode": 2
  },
- "updated_at": 1790409364.6117103,
+ "updated_at": 1790772944.741405,
  "data": {
-  "items": {},
+  "items": {
+   "rc_9daa722120cf": {
+    "id": "rc_9daa722120cf",
+    "inode": "in_b3519f23cc65",
+    "name": "draft-old.md",
+    "type": "file",
+    "original_path": "/tmp/draft-old.md",
+    "original_parent": "in_be0ee1bf2667",
+    "deleted_at": 1790772944.7052207,
+    "deleted_by": "bob",
+    "rule_id": "",
+    "rule_name": "",
+    "tier_at_delete": "hot",
+    "retention_days": 7,
+    "expires_at": 1790798144.7052224,
+    "size": 53,
+    "files": 1,
+    "blocks": 1
+   },
+   "rc_81b3a522aa89": {
+    "id": "rc_81b3a522aa89",
+    "inode": "in_af25d8090fd3",
+    "name": "scratch.txt",
+    "type": "file",
+    "original_path": "/tmp/scratch.txt",
+    "original_parent": "in_be0ee1bf2667",
+    "deleted_at": 1790772944.739273,
+    "deleted_by": "alice",
+    "rule_id": "",
+    "rule_name": "",
+    "tier_at_delete": "hot",
+    "retention_days": 7,
+    "expires_at": 1790798144.739275,
+    "size": 19,
+    "files": 1,
+    "blocks": 1
+   }
+  },
   "retention_days": 7
  }
 }

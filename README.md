@@ -48,7 +48,8 @@ python3 -m backend.datanode --id dn5 --port 8025
 | 页面 | 文件 | 内容 |
 |---|---|---|
 | 仪表盘 | `index.html` | KPI / 容量水位 / 最近提交 / 事件流 / 热点 TOP |
-| 文件浏览 | `files.html` | 目录树 + 缩略图网格 + 面包屑 + 块/副本详情抽屉 + 文本预览 |
+| 文件浏览 | `files.html` | 目录树 + 缩略图网格 + 面包屑 + 块/副本详情抽屉（含存储层/生命周期）+ 文本预览 |
+| 生命周期 | `lifecycle.html` | 归档/回收站规则 CRUD、规则优先级与**覆盖关系预览**、**撤销宽限**倒计时、执行历史/文件溯源 |
 | 上传下载 | `transfer.html` | 分块上传（分片可视化、暂停/续传/混沌模式）、Range 分段下载（断点续传、sha256 校验、副本命中统计） |
 | 版本历史 | `versions.html` | 提交时间线（泳道）、分支管理、提交/合并/检出、冲突展示、文件级历史与回滚 |
 | 差异对比 | `diff.html` | 版本 diff + 文本 diff 双模式、Myers/Patience/difflib 选择、unified/双栏视图、行内字符级高亮、大文件性能试验台 |
@@ -180,6 +181,9 @@ GET|POST /api/perms  PUT|DELETE /api/perms/<id>        （perm_admin）
 POST /api/perms/check
 GET  /api/logs|logs/export       POST /api/logs/clear  （admin）
 GET  /api/recycle                POST /api/recycle/restore|purge|empty
+GET  /api/lifecycle/rules|preview|pending|history|file
+POST /api/lifecycle/rules/<id>(PUT|DELETE)|.../toggle|pending/<id>/cancel|
+     /api/lifecycle/scan|archive_now|restore              （规则写操作 admin）
 POST /internal/heartbeat|block_report      GET /internal/meta/<doc>   （集群密钥）
 ```
 

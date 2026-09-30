@@ -75,8 +75,8 @@ ARCH_MD = """# 架构设计说明
 
 ## 1. 元数据层
 
-NameNode 将所有元数据组织为 9 个 JSON 文档：
-fs / blocks / versions / users / perms / logs / recycle / stats / cluster。
+NameNode 将所有元数据组织为 10 个 JSON 文档：
+fs / blocks / versions / users / perms / logs / recycle / lifecycle / stats / cluster。
 所有写入都经过 `atomic_write_json`：临时文件 → fsync → os.replace → 目录 fsync，
 保证任何崩溃点都不会产生半截文件。
 
@@ -429,6 +429,9 @@ def seed_cluster(nn, datanodes=None, verbose=True):
     say("生成历史访问热度与吞吐数据 …")
     _seed_stats(nn)
 
+    say("注入生命周期规则与文件访问龄 …")
+    _seed_lifecycle(nn)
+
     say("注入历史日志 …")
     _seed_logs(nn)
 
@@ -526,6 +529,62 @@ def _seed_stats(nn):
                 "blocks": 60 + i * 2,
             })
         nn.meta.touch("stats")
+
+
+def _seed_lifecycle(nn):
+    """
+    演示生命周期策略（规则间优先级/覆盖关系）：
+      归档：
+        * /data 下 30 天未访问 -> 归档冷数据（优先级 120）
+        * /finance 下 14 天未访问 -> 归档冷数据（优先级 150，更敏感目录更早归档）
+        * 全局 / 60 天未访问 -> 归档（兜底，优先级 50；被更长前缀规则覆盖）
+      回收站：
+        * /logs 下 21 天未访问 -> 自动移入回收站
+        * /tmp 下 3 天未修改 -> 自动移入回收站（精确按 mtime）
+        * 全局 / 90 天未访问 -> 回收站（兜底）
+    同时回填部分文件的 last_access，制造"已到期/未到期/被覆盖"三类预览。
+    """
+    t = now()
+    day = 86400
+    with nn.meta.lock:
+        access_age = {
+            "/data/sales.csv": 3 * day,           # 未到期
+            "/data/users.json": 45 * day,         # 已到期（/data 30d 归档）
+            "/data/blob-3mb.bin": 75 * day,       # 已到期：/data 与全局同时命中（覆盖演示）
+            "/logs/cluster-24h.log": 25 * day,    # 已到期（/logs 21d 回收站）
+            "/finance/payroll-q3.csv": 20 * day,  # 已到期（/finance 14d 归档）
+            "/docs/roadmap.md": 65 * day,         # 已到期（全局 60d 归档）
+            "/code/server.py": 2 * day,           # 未到期
+            "/code/client.py": 100 * day,         # 已到期（全局 90d 回收站）
+            "/images/architecture.svg": 50 * day, # 未到期
+            "/public/notice.txt": 200 * day,      # 已到期：全局归档+回收站同时命中
+        }
+        for path, age in access_age.items():
+            inode = nn.fs.resolve(path, must_exist=False)
+            if inode and inode["type"] == "file":
+                inode["last_access"] = t - age
+        # /tmp 草稿（mtime 演示）；文件已在回收站，这里改 code 下一个文件不做
+        nn.meta.touch("fs")
+
+    rules = [
+        # name, path, match, action, amount, unit, base, priority, note
+        ("财务数据提前归档", "/finance", "prefix", "archive", 14, "days",
+         "atime", 150, "敏感目录更早转入冷数据"),
+        ("数据目录冷归档", "/data", "prefix", "archive", 30, "days",
+         "atime", 120, "大数据集 30 天未访问自动归档"),
+        ("日志自动回收", "/logs", "prefix", "trash", 21, "days",
+         "atime", 120, "日志保留 21 天后自动移入回收站"),
+        ("全局冷归档兜底", "/", "prefix", "archive", 60, "days",
+         "atime", 50, "兜底策略，被更具体前缀规则覆盖"),
+        ("全局回收站兜底", "/", "prefix", "trash", 90, "days",
+         "atime", 50, "兜底策略，被更具体前缀规则覆盖"),
+    ]
+    for name, path, match, action, amount, unit, base, prio, note in rules:
+        nn.lifecycle.add_rule({
+            "name": name, "path": path, "match": match, "action": action,
+            "age_amount": amount, "age_unit": unit, "age_base": base,
+            "priority": prio, "enabled": True, "note": note,
+        }, actor="admin")
 
 
 def _seed_logs(nn):
