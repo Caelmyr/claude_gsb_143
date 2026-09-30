@@ -47,8 +47,10 @@ class DataNode:
         self.cluster_key = cluster_key or config.CLUSTER_KEY
         self.data_dir = data_dir
         self.block_dir = os.path.join(data_dir, "blocks")
+        self.cold_dir = os.path.join(data_dir, "cold")
         self.cache_dir = os.path.join(data_dir, "doc_cache")
         os.makedirs(self.block_dir, exist_ok=True)
+        os.makedirs(self.cold_dir, exist_ok=True)
         os.makedirs(self.cache_dir, exist_ok=True)
 
         self.capacity = capacity or config.NODE_CAPACITY
@@ -124,10 +126,16 @@ class DataNode:
         """启动时对账：磁盘上有而索引没有的块 => 孤儿（汇报给 NN 决定删除）。"""
         orphans = []
         try:
-            on_disk = {f[:-4] for f in os.listdir(self.block_dir)
-                       if f.endswith(".dat")}
+            hot = {f[:-4] for f in os.listdir(self.block_dir)
+                   if f.endswith(".dat")}
         except OSError:
-            on_disk = set()
+            hot = set()
+        try:
+            cold = {f[:-4] for f in os.listdir(self.cold_dir)
+                    if f.endswith(".dat")}
+        except OSError:
+            cold = set()
+        on_disk = hot | cold
         for bid in list(self.index.keys()):
             if bid not in on_disk:
                 del self.index[bid]
@@ -139,6 +147,73 @@ class DataNode:
 
     def _block_path(self, bid):
         return os.path.join(self.block_dir, f"{bid}.dat")
+
+    def _cold_path(self, bid):
+        return os.path.join(self.cold_dir, f"{bid}.dat")
+
+    def _locate_block(self, bid):
+        """按索引 tier 定位块文件：热目录或冷介质目录。"""
+        meta = self.index.get(bid) or {}
+        if meta.get("tier") == "cold":
+            cold = self._cold_path(bid)
+            if os.path.exists(cold):
+                return cold
+        return self._block_path(bid)
+
+    # ==================================================================
+    # 冷介质分级（生命周期归档 / 取回）
+    # ==================================================================
+    def archive_to_cold(self, bid):
+        """把块从热介质目录移动到冷介质目录（同盘 rename，内容/校验和不变）。"""
+        with self._state_lock:
+            meta = self.index.get(bid)
+        if not meta:
+            raise DataNodeError(f"块不存在: {bid}")
+        src, dst = self._block_path(bid), self._cold_path(bid)
+        if os.path.exists(dst):
+            moved = False     # 幂等：冷介质已有
+        elif not os.path.exists(src):
+            raise DataNodeError(f"热介质上找不到块文件: {bid}")
+        else:
+            os.replace(src, dst)    # 原子改名，数据不重写、不丢内容
+            moved = True
+        with self._state_lock:
+            m = self.index.get(bid)
+            if m is not None:
+                m["tier"] = "cold"
+                m["cold_at"] = now()
+                self._touch_state()
+        if moved:
+            self.push_event({"type": "cold_archived", "block_id": bid})
+            self._persist_state()
+        return {"ok": True, "block_id": bid, "tier": "cold",
+                "node_id": self.node_id, "already": not moved}
+
+    def restore_from_cold(self, bid):
+        """把块从冷介质目录取回热介质目录（访问触发，内容/校验和不变）。"""
+        with self._state_lock:
+            meta = self.index.get(bid)
+        if not meta:
+            raise DataNodeError(f"块不存在: {bid}")
+        src, dst = self._cold_path(bid), self._block_path(bid)
+        if os.path.exists(dst):
+            moved = False     # 幂等
+        elif not os.path.exists(src):
+            raise DataNodeError(f"冷介质上找不到块文件: {bid}")
+        else:
+            os.replace(src, dst)
+            moved = True
+        with self._state_lock:
+            m = self.index.get(bid)
+            if m is not None:
+                m["tier"] = "hot"
+                m.pop("cold_at", None)
+                self._touch_state()
+        if moved:
+            self.push_event({"type": "cold_restored", "block_id": bid})
+            self._persist_state()
+        return {"ok": True, "block_id": bid, "tier": "hot",
+                "node_id": self.node_id, "already": not moved}
 
     # ==================================================================
     # 启动 / 停止 / 故障演练
@@ -267,7 +342,7 @@ class DataNode:
             meta = self.index.get(bid)
         if not meta:
             raise DataNodeError(f"块不存在: {bid}")
-        path = self._block_path(bid)
+        path = self._locate_block(bid)
         try:
             with open(path, "rb") as f:
                 data = f.read()
@@ -295,13 +370,13 @@ class DataNode:
 
     def delete_block(self, bid, reason=""):
         existed = False
-        path = self._block_path(bid)
-        if os.path.exists(path):
-            try:
-                os.unlink(path)
-                existed = True
-            except OSError:
-                pass
+        for path in (self._block_path(bid), self._cold_path(bid)):
+            if os.path.exists(path):
+                try:
+                    os.unlink(path)
+                    existed = True
+                except OSError:
+                    pass
         with self._state_lock:
             if bid in self.index:
                 del self.index[bid]
@@ -443,7 +518,8 @@ class DataNode:
                     blocks.append({"id": bid, "genstamp": meta["genstamp"],
                                    "size": meta["size"],
                                    "checksum": meta["checksum"],
-                                   "state": meta["state"]})
+                                   "state": meta["state"],
+                                   "tier": meta.get("tier", "hot")})
                 orphans = list(getattr(self, "_orphans", []))
                 self._orphans = []
             payload = {"node_id": self.node_id, "blocks": blocks,
@@ -472,7 +548,7 @@ class DataNode:
             sample = random.sample(bids, min(config.SCRUB_BATCH, len(bids)))
             for bid in sample:
                 try:
-                    with open(self._block_path(bid), "rb") as f:
+                    with open(self._locate_block(bid), "rb") as f:
                         data = f.read()
                     actual = sha256_bytes(data)
                     with self._state_lock:
@@ -544,6 +620,8 @@ class DataNode:
         with self._state_lock:
             corrupt = sum(1 for m in self.index.values()
                           if m["state"] == "corrupt")
+            cold = sum(1 for m in self.index.values()
+                       if m.get("tier") == "cold")
             return {
                 "node_id": self.node_id,
                 "rack": self.rack,
@@ -556,6 +634,7 @@ class DataNode:
                 "used": self.used_bytes(),
                 "free": max(0, self.capacity - self.used_bytes()),
                 "blocks": len(self.index),
+                "cold_blocks": cold,
                 "corrupt_blocks": corrupt,
                 "io": dict(self.io),
                 "rates": {"read": round(self.read_rate.rate(), 1),
@@ -687,6 +766,12 @@ class DataNodeHandler(BaseHTTPRequestHandler):
                     body.get("size"))
                 return self._send_json({"ok": ok,
                                         "node_id": self.dn.node_id})
+            if path.startswith("/cold/archive/"):
+                bid = path.split("/")[-1]
+                return self._send_json(self.dn.archive_to_cold(bid))
+            if path.startswith("/cold/restore/"):
+                bid = path.split("/")[-1]
+                return self._send_json(self.dn.restore_from_cold(bid))
             if path == "/corrupt":
                 body = json.loads(self._read_body().decode("utf-8") or "{}")
                 self.dn.corrupt_block_sim(body.get("block_id"))

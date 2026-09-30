@@ -151,11 +151,12 @@ function renderGrid(items) {
   grid.innerHTML = items.map((it, i) => `
     <div class="fcard ${selected && selected.path === it.path ? "sel" : ""}" data-i="${i}">
       ${it.type === "file" ? `<span class="health-dot ${it.health || "ok"}" title="副本健康: ${it.health || "ok"}"></span>` : ""}
-      <div class="thumb">
+      ${it.tier === "cold" ? `<span title="冷数据：访问时自动透明取回" style="position:absolute;top:6px;left:8px;font-size:13px;z-index:2">❄</span>` : ""}
+      <div class="thumb ${it.tier === "cold" ? "thumb-cold" : ""}">
         ${it.thumb ? `<img loading="lazy" src="${esc(thumbUrl(it.path))}" alt="" onerror="this.parentElement.textContent='🖼'">` : fileIcon(it)}
       </div>
       <div class="fname">${esc(it.name)}</div>
-      <div class="fmeta">${it.type === "dir" ? (it.children + " 项") : fmtBytes(it.size)} · ${fmtAgo(it.modified_at)}</div>
+      <div class="fmeta">${it.type === "dir" ? (it.children + " 项") : fmtBytes(it.size)} · ${fmtAgo(it.modified_at)}${it.tier === "cold" ? " · <span style=\"color:#8ec1ff\">冷</span>" : ""}</div>
     </div>`).join("");
   grid.querySelectorAll(".fcard").forEach(el => {
     const it = items[+el.dataset.i];
@@ -203,6 +204,10 @@ async function selectEntry(it) {
             <span class="k">创建 / 修改</span><span class="v">${fmtTs(s.created_at)} · ${fmtTs(s.modified_at)}</span>
             <span class="k">覆盖版本</span><span class="v">v${s.file_version}</span>
             <span class="k">访问</span><span class="v">${s.access_count} 次 · 最近 ${fmtAgo(s.last_access)}</span>
+            <span class="k">存储层级</span><span class="v">${s.tier === "cold"
+              ? (s.retrieving ? '<span style="color:var(--info)">❄ 冷数据 · 取回中…</span>'
+                              : '<span style="color:#8ec1ff">❄ 冷数据（访问自动取回）</span>')
+              : '<span style="color:var(--ok)">● 热数据</span>'}</span>
           </div>
           <div class="btn-group" style="margin-top:14px">
             <button class="btn sm primary" id="d-preview">👁 预览</button>

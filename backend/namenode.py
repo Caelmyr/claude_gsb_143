@@ -32,6 +32,7 @@ import threading
 from . import chunking, config
 from .auth import AuthManager, PermissionManager
 from .filesystem import FsError, VirtualFS
+from .lifecycle import LifecycleManager, TIER_COLD, TIER_HOT
 from .metadata import MetadataStore
 from .util import (HttpError, LRU, RateCounter, RingBuffer, b64e, gen_id,
                    guess_mime, hour_key, http_json, http_request,
@@ -69,6 +70,7 @@ class NameNode:
         self.auth = AuthManager(self.meta)
         self.perms = PermissionManager(self.meta, self.auth)
         self.versions = VersionStore(self)
+        self.lifecycle = LifecycleManager(self)
 
         # ---- 节点注册表（内存态；摘要持久化到 cluster 文档） ----
         self.nodes = {}                  # node_id -> NodeInfo dict
@@ -108,6 +110,7 @@ class NameNode:
         self.versions.ensure_head()
         self._init_blocks_doc()
         self._init_stats_doc()
+        self.lifecycle.init_doc()
         self.meta.start_flusher()
 
         for target, name in (
@@ -120,6 +123,7 @@ class NameNode:
             t = threading.Thread(target=target, name=name, daemon=True)
             t.start()
             self._threads.append(t)
+        self.lifecycle.start()
 
         if with_http:
             from .http_server import start_namenode_server
@@ -130,6 +134,7 @@ class NameNode:
 
     def stop(self):
         self._stop.set()
+        self.lifecycle.stop()
         if self.httpd:
             try:
                 self.httpd.shutdown()
@@ -509,9 +514,20 @@ class NameNode:
             return None
         good = self.live_good_replicas(blk)
         desired = blk.get("desired", config.DEFAULT_REPLICATION)
+        is_cold = blk.get("tier") == TIER_COLD
         state = "healthy"
         with self.health_lock:
-            if not good:
+            if is_cold:
+                # 冷数据按 COLD_REPLICATION 评估；单冷副本缺失时标记 missing
+                # 但不进入常规恢复队列（访问取回时会自动补回冗余）。
+                self.missing_blocks.discard(bid)
+                if good:
+                    self.under_replicated.pop(bid, None)
+                    state = "cold"
+                else:
+                    self.missing_blocks.add(bid)
+                    state = "cold_missing"
+            elif not good:
                 self.missing_blocks.add(bid)
                 self.under_replicated[bid] = self.under_replicated.get(
                     bid, {"since": now(), "attempts": 0})
@@ -878,6 +894,166 @@ class NameNode:
             out.append(data)
         return b"".join(out)
 
+    # ==================================================================
+    # 冷数据分级：归档（hot -> cold）/ 透明取回（cold -> hot）
+    # ==================================================================
+    def _hot_referring_inode_count(self, exclude_inode=None):
+        """
+        构造 block_id -> 仍处于热层的“其它”活动文件数 映射。
+        exclude_inode 是即将归档的文件本身（规划时它仍标 hot，
+        必须排除，否则自己的块会被误判为共享块而永不降温）。
+        只有“除它之外没有任何热文件引用”的块才能安全降温，
+        避免内容去重共享块被一半热文件一半冷文件引用时误归档。
+        """
+        refs = {}
+        with self.meta.lock:
+            for _p, inode in self.fs.all_files():
+                if inode.get("tier") == TIER_COLD:
+                    continue
+                if exclude_inode and inode.get("id") == exclude_inode:
+                    continue
+                for bid in inode.get("block_ids", []):
+                    refs[bid] = refs.get(bid, 0) + 1
+        return refs
+
+    def _dn_tier_call(self, node_id, path_part, bid):
+        """同步调用 DataNode 的冷介质搬运接口。"""
+        url = (f"{self._node_url(node_id).rstrip('/')}/{path_part}/"
+               f"{bid}")
+        _s, _h, body = http_request(
+            url, "POST", b"", timeout=20,
+            headers={"X-Cluster-Key": self.cluster_key})
+        import json as _json
+        return _json.loads(body.decode("utf-8")) if body else {}
+
+    def _plan_archive_inode(self, inode):
+        """
+        锁内：为一个 inode 规划块归档（不做任何网络 IO）。
+        返回 plan：每块要保留的 keeper、要删除的 drop，及共享块跳过列表。
+        调用方须持有 meta.lock。
+        """
+        hot_refs = self._hot_referring_inode_count(
+            exclude_inode=inode.get("id"))
+        blocks = self.meta.get("blocks")["blocks"]
+        plan = []
+        skipped_shared = []
+        keep = max(1, config.COLD_REPLICATION)
+        for bid in inode.get("block_ids", []):
+            blk = blocks.get(bid)
+            if not blk or blk.get("tier") == TIER_COLD:
+                continue
+            if hot_refs.get(bid, 0) > 0:
+                skipped_shared.append(bid)
+                continue    # 还被其它热文件引用（去重共享块），保持热层
+            live_good = self.live_good_replicas(blk)
+            keepers = live_good[:keep]
+            drops = [nid for nid in live_good if nid not in keepers]
+            plan.append({"bid": bid, "keepers": keepers, "drops": drops})
+        return {"plan": plan, "skipped_shared": skipped_shared,
+                "keep": keep}
+
+    def _execute_archive_plan(self, plan_doc):
+        """锁外：下发降冗余删除命令 + keeper 热->冷介质搬运。"""
+        keep = plan_doc["keep"]
+        executed = []
+        for item in plan_doc["plan"]:
+            bid, keepers, drops = item["bid"], item["keepers"], item["drops"]
+            for nid in drops:
+                self._enqueue_command(nid, {
+                    "type": "delete", "block_id": bid,
+                    "reason": "生命周期归档：冷数据降冗余"})
+            ok_keepers = []
+            if keepers:
+                for nid in keepers:
+                    try:
+                        self._dn_tier_call(nid, "cold/archive", bid)
+                        ok_keepers.append(nid)
+                    except Exception as e:  # noqa: BLE001
+                        self.log_event("WARN", "lifecycle", "cold_move_fail",
+                                       f"{bid}@{nid}", "system", str(e)[:200])
+            executed.append({"bid": bid, "keepers": keepers,
+                             "drops": drops, "ok_keepers": ok_keepers})
+        return executed
+
+    def _commit_archive_plan(self, executed, keep):
+        """锁内：块表落地 tier=cold / desired / cold_keepers。返回成功块数。"""
+        moved = 0
+        with self.meta.lock:
+            blocks = self.meta.get("blocks")["blocks"]
+            for item in executed:
+                bid = item["bid"]
+                blk = blocks.get(bid)
+                if not blk or blk.get("tier") == TIER_COLD:
+                    continue
+                reps = blk.get("replicas") or {}
+                for nid in item["drops"]:
+                    reps.pop(nid, None)
+                blk["tier"] = TIER_COLD
+                blk["desired"] = keep
+                blk["cold_keepers"] = item["ok_keepers"]
+                blk["cold_at"] = now()
+                moved += 1
+                # 归档后冷块不参与常规副本补齐队列
+                with self.health_lock:
+                    self.under_replicated.pop(bid, None)
+                    self.missing_blocks.discard(bid)
+            if moved:
+                self.meta.touch("blocks", flush=False)
+        return moved
+
+    def restore_blocks_to_hot(self, block_ids):
+        """
+        取回：把冷块从 keeper 的冷介质目录取回热介质。
+        返回成功取回热层的块数。冗余补齐交给既有恢复调度（desired 恢复）。
+        网络搬运在 meta 锁外执行，避免长时间持锁。
+        """
+        with self.meta.lock:
+            blocks = self.meta.get("blocks")["blocks"]
+            targets = []
+            for bid in block_ids:
+                blk = blocks.get(bid)
+                if not blk or blk.get("tier") != TIER_COLD:
+                    continue
+                keepers = blk.get("cold_keepers") or [
+                    nid for nid, r in (blk.get("replicas") or {}).items()
+                    if r.get("state") == "ok"]
+                targets.append((bid, keepers))
+        # 锁外：逐 keeper 触发冷->热介质搬运
+        moved = {}
+        for bid, keepers in targets:
+            ok = False
+            for nid in keepers:
+                try:
+                    self._dn_tier_call(nid, "cold/restore", bid)
+                    ok = True
+                    break
+                except Exception as e:  # noqa: BLE001
+                    self.log_event("WARN", "lifecycle",
+                                   "cold_restore_fail",
+                                   f"{bid}@{nid}", "system", str(e)[:200])
+            moved[bid] = ok
+        # 回锁：批量更新块表
+        with self.meta.lock:
+            blocks = self.meta.get("blocks")["blocks"]
+            for bid, _keepers in targets:
+                blk = blocks.get(bid)
+                if not blk:
+                    continue
+                blk["tier"] = TIER_HOT
+                blk["desired"] = config.DEFAULT_REPLICATION
+                blk["restored_at"] = now()
+                blk.pop("cold_keepers", None)
+                blk.pop("cold_at", None)
+            if targets:
+                self.meta.touch("blocks", flush=False)
+        # 锁外触发恢复评估，由恢复队列把副本补到 desired
+        for bid, _k in targets:
+            try:
+                self.check_block_health(bid)
+            except Exception:  # noqa: BLE001
+                pass
+        return sum(1 for ok in moved.values() if ok)
+
     def read_block(self, bid, start=None, end=None, verify=True,
                    use_cache=True):
         """
@@ -942,8 +1118,11 @@ class NameNode:
     def read_file_range(self, path, offset=0, length=None, user=None):
         """
         文件级 Range 读：把 [offset, offset+length) 映射到块区间逐块读取。
+        若文件在冷数据，先透明取回（retrieve），再走正常读路径。
         返回 (data, info)。
         """
+        # 冷数据透明取回钩子（下载 / 预览 / 缩略图都汇聚于此）
+        self.lifecycle.retrieve_file_if_cold(path)
         with self.meta.lock:
             inode = self.fs.resolve(path)
             if inode["type"] != "file":
@@ -1157,6 +1336,8 @@ class NameNode:
             "path": path, "name": inode["name"], "size": inode.get("size", 0),
             "content_hash": inode.get("content_hash"),
             "mime": inode.get("mime"),
+            "tier": inode.get("tier", "hot"),
+            "retrieving": bool(inode.get("retrieving")),
             "blocks": [{"id": b["id"], "size": b["size"],
                         "checksum": b["checksum"][:16],
                         "genstamp": b["genstamp"],
@@ -1220,6 +1401,9 @@ class NameNode:
                     inode["access_count"] = inode.get("access_count", 0) + 1
                     inode["last_access"] = now()
                     self.meta.touch("fs", flush=False)
+                    # 访问即续期：清除该文件“归档”动作的撤销记录，规则重新计时
+                    if entry["op"] in ("read", "thumb"):
+                        self.lifecycle.clear_access_snoozes(inode["id"])
         except FsError:
             pass
 
@@ -1368,15 +1552,19 @@ class NameNode:
         per_node_blocks = {n["node_id"]: 0 for n in nodes}
         per_node_bytes = {n["node_id"]: 0 for n in nodes}
         per_node_corrupt = {n["node_id"]: 0 for n in nodes}
+        per_node_cold = {n["node_id"]: 0 for n in nodes}
         with self.meta.lock:
             blocks = list(self.meta.get("blocks")["blocks"].values())
         for blk in blocks:
+            is_cold = blk.get("tier") == TIER_COLD
             for nid, rep in list((blk.get("replicas") or {}).items()):
                 if nid in per_node_blocks:
                     per_node_blocks[nid] += 1
                     per_node_bytes[nid] += rep.get("size", 0)
                     if rep.get("state") == "corrupt":
                         per_node_corrupt[nid] += 1
+                    if is_cold:
+                        per_node_cold[nid] += 1
         out = []
         for n in sorted(nodes, key=lambda x: x["node_id"]):
             nid = n["node_id"]
@@ -1395,6 +1583,7 @@ class NameNode:
                 "vv": n.get("vv", {}), "doc_vv": n.get("doc_vv", {}),
                 "nn_block_count": per_node_blocks.get(nid, 0),
                 "nn_block_bytes": per_node_bytes.get(nid, 0),
+                "cold_blocks": per_node_cold.get(nid, 0),
                 "corrupt": per_node_corrupt.get(nid, 0),
                 "pending_commands": len(self.pending_commands.get(nid, [])),
             })
@@ -1660,8 +1849,10 @@ class NameNode:
                     "checksum": blk["checksum"][:16],
                     "genstamp": blk["genstamp"],
                     "desired": blk.get("desired"),
+                    "tier": blk.get("tier", "hot"),
                     "live": len(live),
                     "status": ("missing" if not live else
+                               "cold" if blk.get("tier") == TIER_COLD else
                                "under" if len(live) < blk.get("desired", 3)
                                else "ok"),
                     "replicas": [

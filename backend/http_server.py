@@ -807,7 +807,8 @@ def api_logs_clear(ctx):
 @route("GET", "/api/recycle")
 def api_recycle_list(ctx):
     items = ctx.nn.fs.recycle_list()
-    return {"items": items, "stats": ctx.nn.fs.trash_stats()}
+    return {"items": items, "stats": ctx.nn.fs.trash_stats(),
+            "lifecycle_count": sum(1 for i in items if i.get("auto"))}
 
 
 @route("POST", "/api/recycle/restore")
@@ -833,6 +834,107 @@ def api_recycle_empty(ctx):
     result = ctx.nn.fs.empty_trash(ctx.actor())
     ctx.nn.log_event("WARN", "fs", "trash_empty", "", ctx.actor(),
                      f"清空回收站：{result['purged']} 项")
+    return {"ok": True, **result}
+
+
+# ============================================================================
+# API: 数据生命周期（自动归档冷数据 / 自动移入回收站）
+# ============================================================================
+
+@route("GET", "/api/lifecycle/stats")
+def api_lifecycle_stats(ctx):
+    return {"stats": ctx.nn.lifecycle.stats()}
+
+
+@route("GET", "/api/lifecycle/rules")
+def api_lifecycle_rules(ctx):
+    return {"rules": ctx.nn.lifecycle.list_rules()}
+
+
+@route("POST", "/api/lifecycle/rules", cap="admin")
+def api_lifecycle_rule_create(ctx):
+    body = ctx.json()
+    # 规则作用路径做一次读权限校验（管理员可对任意路径配置）
+    ctx.require_perm(body.get("scope", "/"), "write")
+    rule = ctx.nn.lifecycle.create_rule(body, ctx.actor())
+    return {"ok": True, "rule": rule}
+
+
+@route("PUT", "/api/lifecycle/rules/<rule_id>", cap="admin")
+def api_lifecycle_rule_update(ctx):
+    body = ctx.json()
+    rule = ctx.nn.lifecycle.update_rule(ctx.params["rule_id"], body,
+                                        ctx.actor())
+    return {"ok": True, "rule": rule}
+
+
+@route("DELETE", "/api/lifecycle/rules/<rule_id>", cap="admin")
+def api_lifecycle_rule_delete(ctx):
+    result = ctx.nn.lifecycle.delete_rule(ctx.params["rule_id"], ctx.actor())
+    return result
+
+
+@route("GET", "/api/lifecycle/preview")
+def api_lifecycle_preview(ctx):
+    q = ctx.query
+    result = ctx.nn.lifecycle.evaluate(
+        rule_id=q.get("rule"),
+        state=q.get("state", "actionable"),
+        q=q.get("q", ""),
+        limit=ctx.q_int("limit", 300))
+    return result
+
+
+@route("POST", "/api/lifecycle/dismiss", cap="admin")
+def api_lifecycle_dismiss(ctx):
+    body = ctx.json()
+    return ctx.nn.lifecycle.dismiss(body.get("inode", ""),
+                                    body.get("rule_id", ""),
+                                    body.get("action", ""), ctx.actor())
+
+
+@route("POST", "/api/lifecycle/rearm", cap="admin")
+def api_lifecycle_rearm(ctx):
+    body = ctx.json()
+    return ctx.nn.lifecycle.rearm(body.get("inode", ""),
+                                  body.get("rule_id", ""),
+                                  body.get("action", ""), ctx.actor())
+
+
+@route("POST", "/api/lifecycle/scan", cap="admin")
+def api_lifecycle_scan(ctx):
+    result = ctx.nn.lifecycle.scan_once(ctx.actor())
+    ctx.nn.log_event("INFO", "lifecycle", "manual_scan", "", ctx.actor(),
+                     f"手动执行扫描：归档 {result['archived']}、回收 "
+                     f"{result['trashed']}")
+    return {"ok": True, **result}
+
+
+@route("GET", "/api/lifecycle/history")
+def api_lifecycle_history(ctx):
+    path = ctx.query.get("path")
+    limit = ctx.q_int("limit", 100)
+    return ctx.nn.lifecycle.history(path=path, limit=limit)
+
+
+@route("GET", "/api/lifecycle/file")
+def api_lifecycle_file(ctx):
+    path = ctx.query.get("path", "/")
+    ctx.require_perm(path, "read")
+    return {"trace": ctx.nn.lifecycle.file_trace(path)}
+
+
+@route("GET", "/api/lifecycle/archived")
+def api_lifecycle_archived(ctx):
+    return {"items": ctx.nn.lifecycle.archived_files()}
+
+
+@route("POST", "/api/lifecycle/retrieve")
+def api_lifecycle_retrieve(ctx):
+    body = ctx.json()
+    path = body.get("path", "/")
+    ctx.require_perm(path, "read")
+    result = ctx.nn.lifecycle.retrieve_path(path, ctx.actor())
     return {"ok": True, **result}
 
 

@@ -337,6 +337,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   overflow: hidden; font-size: 34px;
 }
 .fcard .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.fcard .thumb.thumb-cold {
+  background: linear-gradient(135deg, rgba(111,177,255,.14), rgba(155,108,255,.10));
+  border-color: rgba(111,177,255,.35);
+}
+.fcard .thumb.thumb-cold img { opacity: .82; filter: saturate(.7) hue-rotate(-12deg); }
 .fcard .fname {
   font-size: 12.5px; font-weight: 550; word-break: break-all;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

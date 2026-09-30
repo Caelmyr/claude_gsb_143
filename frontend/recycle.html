@@ -113,6 +113,7 @@ function renderItems(items) {
     <tr>
       <td>
         <span class="item-name">${it.type === "dir" ? "🗀" : "🗎"} ${esc(it.name)}</span>
+        ${it.auto ? `<span class="badge" style="background:rgba(79,140,255,.15);color:#9dbfff" title="由生命周期规则「${esc(it.lifecycle_rule_name || '')}」自动移入">❄ 生命周期</span>` : ""}
         ${it.type === "dir" ? `<span class="badge dim plain">${it.files} 文件</span>` : ""}
       </td>
       <td>${it.type === "dir" ? '<span class="badge acc plain">目录</span>' : '<span class="badge dim plain">文件</span>'}</td>

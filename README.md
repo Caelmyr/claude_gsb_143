@@ -10,7 +10,7 @@
 纯 Python（标准库，零第三方依赖）+ 原生 HTML/CSS/JS 实现的**教学级分布式文件系统**：
 模拟 HDFS 风格的 NameNode / DataNode 集群（节点间全 HTTP 通信），
 在其上叠加 Git 风格的版本控制（提交 / 分支 / 三方合并 / 检出），
-并提供 11 个页面的管理控制台。
+并提供 12 个页面的管理控制台。
 
 代码规模：**约 12,000 行**（后端 ~8,700 行 Python，前端 ~4,400 行 HTML/CSS/JS）。
 
@@ -43,13 +43,14 @@ python3 -m backend.datanode --id dn5 --port 8025
 
 ---
 
-## 2. 前端页面（11 个，要求 10 个 + 仪表盘）
+## 2. 前端页面（12 个，要求 10 个 + 仪表盘 + 生命周期）
 
 | 页面 | 文件 | 内容 |
 |---|---|---|
 | 仪表盘 | `index.html` | KPI / 容量水位 / 最近提交 / 事件流 / 热点 TOP |
 | 文件浏览 | `files.html` | 目录树 + 缩略图网格 + 面包屑 + 块/副本详情抽屉 + 文本预览 |
 | 上传下载 | `transfer.html` | 分块上传（分片可视化、暂停/续传/混沌模式）、Range 分段下载（断点续传、sha256 校验、副本命中统计） |
+| 生命周期 | `lifecycle.html` | 冷数据自动归档 / 到期移入回收站规则、优先级与覆盖关系、即将触发预览与宽限期撤销、冷数据清单与透明取回、逐文件执行留痕 |
 | 版本历史 | `versions.html` | 提交时间线（泳道）、分支管理、提交/合并/检出、冲突展示、文件级历史与回滚 |
 | 差异对比 | `diff.html` | 版本 diff + 文本 diff 双模式、Myers/Patience/difflib 选择、unified/双栏视图、行内字符级高亮、大文件性能试验台 |
 | 节点状态 | `nodes.html` | 节点卡片（心跳/容量/IO/版本向量）、块×节点副本矩阵、恢复队列、杀死/复活/注入损坏演练、实时事件流 |
@@ -67,15 +68,16 @@ python3 -m backend.datanode --id dn5 --port 8025
 ## 3. 架构
 
 ```
-┌──────────────────────────── 浏览器（11 页面）────────────────────────────┐
+┌──────────────────────────── 浏览器（12 页面）────────────────────────────┐
 │  fetch /api/*（JSON）· /api/download（Range）· /api/thumbnail           │
 └───────────────────────────────────┬──────────────────────────────────────┘
                                     │ HTTP（Bearer 令牌 + 路径 ACL）
 ┌───────────────────────────────────▼──────────────────────────────────────┐
 │  NameNode :8020 （backend/namenode.py + http_server.py）                  │
-│   · 元数据 9 个 JSON 文档：fs/blocks/versions/users/perms/                │
-│     logs/recycle/stats/cluster   —— 原子写 + 版本向量                     │
+│   · 元数据 10 个 JSON 文档：fs/blocks/versions/users/perms/               │
+│     logs/recycle/lifecycle/stats/cluster —— 原子写 + 版本向量             │
 │   · 块表（genstamp/校验和/副本位置）、放置策略、恢复调度、GC                │
+│   · 生命周期：冷数据归档（块降冗余+冷介质迁移）/ 透明取回 / 回收站自动化      │
 │   · 上传会话（断点续传暂存）、Range 读路径（副本轮询+故障转移）              │
 │   · 版本树 VersionStore（提交/分支/merge/checkout）                        │
 └──────┬───────────────────────────────────────────────────▲───────────────┘
@@ -93,10 +95,11 @@ python3 -m backend.datanode --id dn5 --port 8025
 元数据目录布局（`data/`，全部 JSON，崩溃安全）：
 
 ```
-data/meta/{fs,blocks,versions,users,perms,logs,recycle,stats,cluster}.json
+data/meta/{fs,blocks,versions,users,perms,logs,recycle,lifecycle,stats,cluster}.json
 data/sessions/<upload_id>/piece_000000      # 上传分片暂存
-data/datanodes/<node_id>/blocks/<blk>.dat   # 块本体
-data/datanodes/<node_id>/node_state.json    # DN 索引（原子写）
+data/datanodes/<node_id>/blocks/<blk>.dat   # 块本体（热介质）
+data/datanodes/<node_id>/cold/<blk>.dat     # 归档块本体（冷介质，访问时取回）
+data/datanodes/<node_id>/node_state.json    # DN 索引（原子写，含 tier 标记）
 data/datanodes/<node_id>/doc_cache/*.json   # DN 同步到的元数据文档
 ```
 
@@ -180,6 +183,9 @@ GET|POST /api/perms  PUT|DELETE /api/perms/<id>        （perm_admin）
 POST /api/perms/check
 GET  /api/logs|logs/export       POST /api/logs/clear  （admin）
 GET  /api/recycle                POST /api/recycle/restore|purge|empty
+GET  /api/lifecycle/stats|rules|preview|archived|history|file
+POST /api/lifecycle/rules|dismiss|rearm|scan|retrieve
+PUT|DELETE /api/lifecycle/rules/<id>            （管理类操作需 admin）
 POST /internal/heartbeat|block_report      GET /internal/meta/<doc>   （集群密钥）
 ```
 
@@ -198,13 +204,14 @@ gsb4/
 │   ├── metadata.py            # JSON 文档仓库（原子写 + vv 同步语义）
 │   ├── auth.py                # 用户/口令/会话 + 路径 ACL
 │   ├── filesystem.py          # inode 树 + 回收站
+│   ├── lifecycle.py           # 生命周期规则/优先级覆盖/宽限撤销/归档取回/留痕
 │   ├── versioning.py          # 提交/分支/合并/检出/GC 引用集
 │   ├── namenode.py            # 块表/放置/心跳/恢复/上传下载/统计/GC
 │   ├── datanode.py            # 块存储/心跳/汇报/scrub/流水线/文档同步
 │   ├── http_server.py         # 路由 + 静态页 + 鉴权中间件
 │   ├── seed.py                # 演示数据（含冲突合并场景）
 │   └── main.py                # 集群装配
-├── frontend/                  # 11 页面 + css/app.css + js/app.js
+├── frontend/                  # 12 页面 + css/app.css + js/app.js
 └── tests/smoke_test.py        # 97 项端到端断言
 ```
 

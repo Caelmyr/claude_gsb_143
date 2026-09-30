@@ -200,6 +200,7 @@ const DFSVS = (() => {
     { group: "文件", items: [
       { href: "files.html", ico: "🗀", name: "文件浏览" },
       { href: "transfer.html", ico: "⇅", name: "上传下载" },
+      { href: "lifecycle.html", ico: "❄", name: "生命周期" },
       { href: "recycle.html", ico: "🗑", name: "回收站" },
     ]},
     { group: "版本", items: [

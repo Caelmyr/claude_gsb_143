@@ -175,7 +175,13 @@ class VirtualFS:
                 existing["block_ids"] = block_ids
                 existing["mime"] = mime
                 existing["modified_at"] = ts
+                existing["last_access"] = ts
                 existing["file_version"] = existing.get("file_version", 1) + 1
+                # 覆盖写产生全新热块：清掉旧的冷数据层级标记
+                existing["tier"] = "hot"
+                existing["retrieving"] = False
+                existing.pop("archived_at", None)
+                existing.pop("archived_rule", None)
                 self._touch_dir_mtime(parent)
                 self.meta.touch("fs")
                 return existing
@@ -297,6 +303,9 @@ class VirtualFS:
             "content_hash": inode.get("content_hash"),
             "access_count": inode.get("access_count", 0),
             "last_access": inode.get("last_access"),
+            "tier": inode.get("tier", "hot"),
+            "retrieving": bool(inode.get("retrieving")),
+            "archived_at": inode.get("archived_at"),
             "blocks": len(inode.get("block_ids", [])),
             "thumb": bool(inode.get("mime", "").startswith("image/")),
         }
